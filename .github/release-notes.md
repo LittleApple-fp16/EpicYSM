@@ -1,8 +1,5 @@
-Fixes combat animations failing after death and respawn while the YSM model continues using its own walking animation.
+Preserves outfit, accessory and body scale settings by rendering dynamic models through Yes Steve Model with Epic Fight's skeleton overlay. Models sharing the same texture and bone names no longer select an arbitrary model copy.
 
-- Render ownership belongs to the current player entity and world.
-- Respawn and world changes rebuild cached model detection and live skeleton bindings.
-- Reload and player cleanup discard stale render ownership.
-- Regression tests cover respawn, world replacement, clock rollback, expiration, and cleanup.
+Includes regression coverage for Kipfel outfit expressions, animated visibility and ambiguous skeleton matches, plus the existing respawn cache tests.
 
-Install the JAR for the Minecraft version and loader shown in this release. SHA256SUMS.txt contains the artifact checksum.
+Respawn and world-change fixes from 0.0.1 remain included.

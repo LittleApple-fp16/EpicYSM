@@ -73,6 +73,8 @@ public final class ModelManager {
             };
 
     private final Set<String> failed = new HashSet<>();
+    private final Set<String> liveAppearanceModels = new HashSet<>();
+    private final Set<java.util.UUID> ambiguousModels = new HashSet<>();
     private final Map<java.util.UUID, Integer> foreignRendererSeen = new HashMap<>();
     private final Map<java.util.UUID, Long> foreignSignatures = new HashMap<>();
     private final Map<java.util.UUID, Integer> unreadableAttempts = new HashMap<>();
@@ -80,14 +82,6 @@ public final class ModelManager {
     /** The texture Yes Steve Model is drawing each player with. */
     private final Map<java.util.UUID, ResourceLocation> foreignTextures = new HashMap<>();
 
-    /**
-     * How many frames the live skeleton has been asked for and not found.
-     * Generous: the model is built once, and until it is there is nothing
-     * to compare against, but a walk of YSM's objects is not free either.
-     */
-    private static final int MAX_SKELETON_FRAMES = 60;
-    private static final int SKELETON_EVERY = 10;
-    private final Map<java.util.UUID, Integer> skeletonAttempts = new HashMap<>();
     /** Players Epic Fight is currently drawing itself, by tick last seen. */
     private final RenderHistory<AbstractClientPlayer> epicFightDrew = new RenderHistory<>(FOREIGN_RENDERER_MEMORY_TICKS);
     /** Players handed to another mod's renderer, behind this mod's, by tick last seen. */
@@ -203,20 +197,13 @@ public final class ModelManager {
         }
     }
 
-    /** Whether Epic Fight should leave this player to Yes Steve Model. */
+    /** Whether YSM should draw this player with the live skeleton overlay. */
     public boolean shouldYieldToYsm(AbstractClientPlayer player) {
         if (com.argorice.epicysm.client.compat.LookOwners.ownsLook(player)) {
-            // Another mod is drawing this player as something else.
-            return false;
-        }
-
-        if (EpicYsmConfig.unreadableModels() == EpicYsmConfig.Unreadable.KEEP_COMBAT) {
-            // The player chose Epic Fight animations over the model itself.
             return false;
         }
 
         Integer seenTick = this.foreignRendererSeen.get(player.getUUID());
-
         if (seenTick == null || player.tickCount < seenTick
                 || (long) player.tickCount - seenTick > FOREIGN_RENDERER_MEMORY_TICKS) {
             this.yielded.remove(player.getUUID());
@@ -224,24 +211,31 @@ public final class ModelManager {
         }
 
         Detection detection = this.probedModels.get(player.getUUID());
-        boolean yield = detection == null || this.convertedModel(detection, this.foreignTextures.get(player.getUUID())) == null;
+        ConvertedModel model = detection == null ? null
+                : this.convertedModel(detection, this.foreignTextures.get(player.getUUID()));
+        boolean liveAppearance = detection != null && this.liveAppearanceModels.contains(detection.modelId());
+        boolean ambiguous = this.ambiguousModels.contains(player.getUUID());
 
+        if (!liveAppearance && !ambiguous
+                && EpicYsmConfig.unreadableModels() == EpicYsmConfig.Unreadable.KEEP_COMBAT) {
+            return false;
+        }
+
+        boolean yield = model == null;
         if (yield != this.yielded.getOrDefault(player.getUUID(), Boolean.FALSE)) {
             this.yielded.put(player.getUUID(), yield);
-
-            if (yield) {
+            if (yield && (liveAppearance || ambiguous)) {
+                EpicYsm.LOGGER.info("Player {} uses Yes Steve Model's live appearance with Epic Fight's skeleton overlay ({})",
+                        player.getName().getString(), ambiguous ? "model selection is ambiguous" : "dynamic scale channels");
+            } else if (yield) {
                 EpicYsm.LOGGER.info("Model of player {} cannot be read (encrypted .ysm); leaving it to Yes Steve Model, so"
                         + " Epic Fight attack animations are not shown for it. Change this in the settings screen (/epicysm config)",
                         player.getName().getString());
-
-                // Yes Steve Model has this model unpacked in memory in order
-                // to draw it. Write down the shape of those objects once, so
                 if (Diag.on()) {
                     com.argorice.epicysm.client.ysm.YsmGeometryProbe.runOnce(player, this.lastForeignRenderer, this.lastForeignTexture);
                 }
             }
         }
-
         return yield;
     }
 
@@ -277,7 +271,7 @@ public final class ModelManager {
         this.unreadableAttempts.remove(player);
         this.probedModels.remove(player);
         this.foreignTextures.remove(player);
-        this.skeletonAttempts.remove(player);
+        this.ambiguousModels.remove(player);
         this.epicFightDrew.remove(player);
         this.handedOver.remove(player);
         this.yielded.remove(player);
@@ -292,7 +286,7 @@ public final class ModelManager {
         this.unreadableAttempts.clear();
         this.probedModels.clear();
         this.foreignTextures.clear();
-        this.skeletonAttempts.clear();
+        this.ambiguousModels.clear();
         this.epicFightDrew.clear();
         this.handedOver.clear();
         this.yielded.clear();
@@ -331,7 +325,7 @@ public final class ModelManager {
         this.handedOver.retainAll(this.foreignRendererSeen.keySet());
         this.epicFightDrew.retainAll(this.foreignRendererSeen.keySet());
         this.foreignTextures.keySet().retainAll(this.foreignRendererSeen.keySet());
-        this.skeletonAttempts.keySet().retainAll(this.foreignRendererSeen.keySet());
+        this.ambiguousModels.retainAll(this.foreignRendererSeen.keySet());
     }
 
     /**
@@ -399,43 +393,20 @@ public final class ModelManager {
         this.unreadableAttempts.remove(player.getUUID());
         Detection detection = match.modelId().isEmpty() ? null : new Detection(match.modelId(), match.texturePath());
 
-        // Several models ship the same picture: before walking Yes Steve
-        // Model's objects for the skeleton, ask what the player actually
-        // chose - Yes Steve Model keeps the choice on the player, synced.
+        this.ambiguousModels.remove(player.getUUID());
         if (detection == null && !match.candidates().isEmpty()) {
             detection = this.settleBySelection(player, match.candidates());
-        }
-
-        if (detection == null && !match.candidates().isEmpty()) {
-            // Walking YSM's objects costs a good fraction of a frame, so it
-            // is not done on every one of them while waiting.
-            int seen = this.skeletonAttempts.getOrDefault(player.getUUID(), 0);
-
-            if (seen % SKELETON_EVERY != 0 && seen < MAX_SKELETON_FRAMES) {
-                this.skeletonAttempts.merge(player.getUUID(), 1, Integer::sum);
-                return;
-            }
-
-            detection = this.settleBySkeleton(player, renderer, match.candidates());
-
-            // On the very first frame a player is drawn, Yes Steve Model has
-            // not finished building the model yet and its skeleton is not
             if (detection == null) {
-                int frames = this.skeletonAttempts.merge(player.getUUID(), 1, Integer::sum);
-
-                if (frames < MAX_SKELETON_FRAMES) {
-                    return;
-                }
-
-                com.argorice.epicysm.client.Diag.info("Yes Steve Model's skeleton stayed unreadable after {} frames; the picture is"
-                        + " shared by several models and none of them is assumed", frames);
+                detection = this.settleBySkeleton(player, renderer, match.candidates());
+            }
+            if (detection == null) {
+                this.ambiguousModels.add(player.getUUID());
             }
         }
 
-        this.skeletonAttempts.remove(player.getUUID());
         this.foreignSignatures.put(player.getUUID(), signature);
 
-        if (detection == null) {
+        if (detection == null && !this.ambiguousModels.contains(player.getUUID())) {
             String probed = YsmModelProbe.probe(renderer, player.getUUID(), texture, this.probeCandidates());
 
             if (!probed.isEmpty()) {
@@ -510,8 +481,7 @@ public final class ModelManager {
             return null;
         }
 
-        YsmTextureMatcher.Candidate best = null;
-        double bestScore = 0.0;
+        Map<String, Double> scores = new HashMap<>();
 
         for (YsmTextureMatcher.Candidate candidate : candidates) {
             java.util.Set<String> ours = this.boneNamesOf(candidate.modelId());
@@ -534,23 +504,24 @@ public final class ModelManager {
                 // one must not win on the strength of being small.
                 double score = (double) shared / (ours.size() + theirs.size() - shared);
 
-                if (score > bestScore) {
-                    bestScore = score;
-                    best = candidate;
-                }
+                scores.merge(candidate.modelId(), score, Math::max);
             }
         }
 
-        if (best == null || bestScore < 0.75) {
-            com.argorice.epicysm.client.Diag.info("Several models ship this picture and none of their skeletons matches the one"
-                    + " Yes Steve Model is showing (best {}%), so none of them is assumed",
-                    Math.round(bestScore * 100.0));
+        String bestId = UniqueModelMatch.choose(scores, 0.75);
+        if (bestId == null) {
+            com.argorice.epicysm.client.Diag.info("Shared texture has no unique skeleton match: {}; using Yes Steve Model's live model", scores);
             return null;
         }
 
-        com.argorice.epicysm.client.Diag.info("Several models ship this picture; '{}' is the one whose skeleton Yes Steve Model"
-                + " actually has ({}% of the bones)", best.modelId(), Math.round(bestScore * 100.0));
-        return new Detection(best.modelId(), best.texturePath());
+        for (YsmTextureMatcher.Candidate candidate : candidates) {
+            if (candidate.modelId().equals(bestId)) {
+                com.argorice.epicysm.client.Diag.info("Shared texture has a unique skeleton match: '{}' ({}%)",
+                        bestId, Math.round(scores.get(bestId) * 100.0));
+                return new Detection(candidate.modelId(), candidate.texturePath());
+            }
+        }
+        return null;
     }
 
     /** Bone names of a model's own geometry file, read once and kept. */
@@ -640,7 +611,7 @@ public final class ModelManager {
             return model;
         }
 
-        if (this.failed.contains(key)) {
+        if (this.failed.contains(key) || this.liveAppearanceModels.contains(detection.modelId())) {
             return null;
         }
 
@@ -662,6 +633,10 @@ public final class ModelManager {
             this.converted.put(key, model);
             EpicYsm.LOGGER.info("Converted model {} ({})", modelId, result.displayName());
             return model;
+        } catch (ModelConverter.LiveAppearance e) {
+            this.liveAppearanceModels.add(modelId);
+            EpicYsm.LOGGER.info("Model {} has dynamic scale channels; preserving YSM's live wardrobe and appearance with the skeleton overlay", modelId);
+            return null;
         } catch (ModelConverter.NotHumanoid e) {
             // Expected for a cockroach or a truck, and not a fault: Yes
             // Steve Model draws it as it always did.
@@ -707,6 +682,7 @@ public final class ModelManager {
 
         this.converted.clear();
         this.failed.clear();
+        this.liveAppearanceModels.clear();
         this.clearPlayerStates();
         this.textureMatcher.reset();
         com.argorice.epicysm.client.render.PhysicsAnimator.get().reset();

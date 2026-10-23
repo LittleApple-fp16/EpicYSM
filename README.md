@@ -33,6 +33,11 @@ the geometry becomes an Epic Fight mesh, the bones become an Epic Fight skeleton
 model's own proportions. Epic Fight then draws the model itself, so everything it can do -
 weapons, armor, add-on effects, trails - works as on its own models.
 
+**Live appearance:** readable models with dynamic scale channels (wardrobe switches,
+body scaling or animated visibility) use YSM's renderer and Epic Fight's skeleton overlay.
+YSM evaluates the current outfit and accessory settings every frame. If models share a
+texture and cannot be identified uniquely, the live YSM model is used as well.
+
 **Encrypted models** (`.ysm` files) are never decrypted. Yes Steve Model keeps drawing them;
 this mod reads the skeleton YSM has in memory, works out where every joint of Epic Fight's
 body lands on that skeleton, and writes the pose into the bones a moment before YSM draws.
