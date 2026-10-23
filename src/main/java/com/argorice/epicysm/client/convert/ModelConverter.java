@@ -50,6 +50,13 @@ public final class ModelConverter {
         }
     }
 
+    /** The model needs YSM's live animation state to preserve its appearance. */
+    public static final class LiveAppearance extends IOException {
+        public LiveAppearance(String id) {
+            super("Model " + id + " has scale channels that require live YSM evaluation");
+        }
+    }
+
     public static Result convert(String id, YsmModelSource source) throws IOException {
         return convert(id, source, null);
     }
@@ -60,15 +67,20 @@ public final class ModelConverter {
      *                      has not been measured yet.
      */
     public static Result convert(String id, YsmModelSource source, @Nullable float[] measuredScale) throws IOException {
+        List<JsonObject> animationFiles = source.readAnimationFiles();
+        List<JsonObject> controllerFiles = source.readControllerFiles();
+        if (DynamicModelAppearance.needsLiveRendering(animationFiles, controllerFiles)) {
+            throw new LiveAppearance(id);
+        }
+
         BedrockGeometry geometry = BedrockGeometryParser.parse(source.readMainModel());
         JsonObject overrides = source.readOverrides();
         JointMapper mapper = new JointMapper(geometry, overrides);
-        List<JsonObject> animationFiles = source.readAnimationFiles();
 
         // Bones the model itself keeps invisible by default (props shown
         // only during specific animations, conditional overlays) stay
         // hidden in the converted mesh too.
-        java.util.Set<String> defaultHidden = AnimationHiddenBones.collect(animationFiles, source.readControllerFiles());
+        java.util.Set<String> defaultHidden = AnimationHiddenBones.collect(animationFiles, controllerFiles);
 
         // And the weapons the character was modelled carrying. Epic Fight
         // draws the item that is really in hand and swings that one, so a
