@@ -89,15 +89,17 @@ public final class ModelManager {
     private static final int SKELETON_EVERY = 10;
     private final Map<java.util.UUID, Integer> skeletonAttempts = new HashMap<>();
     /** Players Epic Fight is currently drawing itself, by tick last seen. */
-    private final Map<java.util.UUID, Integer> epicFightDrew = new HashMap<>();
+    private final RenderHistory<AbstractClientPlayer> epicFightDrew = new RenderHistory<>(FOREIGN_RENDERER_MEMORY_TICKS);
     /** Players handed to another mod's renderer, behind this mod's, by tick last seen. */
-    private final Map<java.util.UUID, Integer> handedOver = new HashMap<>();
+    private final RenderHistory<AbstractClientPlayer> handedOver = new RenderHistory<>(FOREIGN_RENDERER_MEMORY_TICKS);
     private final Map<java.util.UUID, Boolean> yielded = new HashMap<>();
     private final java.util.List<ConvertedModel> pendingRelease = new java.util.ArrayList<>();
     private int observedFrames;
     private Object lastForeignRenderer;
     private ResourceLocation lastForeignTexture;
     private final YsmTextureMatcher textureMatcher = new YsmTextureMatcher();
+    private final Map<java.util.UUID, AbstractClientPlayer> playerInstances = new HashMap<>();
+    private net.minecraft.client.multiplayer.ClientLevel observedLevel;
 
     private ModelManager() {
     }
@@ -116,6 +118,8 @@ public final class ModelManager {
         if (!isRealWorldPlayer(player)) {
             return;
         }
+
+        this.observePlayerInstance(player);
 
         if (++this.observedFrames % CLEANUP_INTERVAL_FRAMES == 0) {
             this.forgetGonePlayers();
@@ -152,19 +156,17 @@ public final class ModelManager {
 
     /** Epic Fight has just drawn this player with a converted model. */
     public void noteEpicFightRendered(AbstractClientPlayer player) {
-        this.epicFightDrew.put(player.getUUID(), player.tickCount);
+        this.epicFightDrew.record(player.getUUID(), player, player.level(), player.tickCount);
     }
 
     /** Another mod's renderer, the one behind this mod's, has just drawn this player as something else. */
     public void noteHandedOver(AbstractClientPlayer player) {
-        this.handedOver.put(player.getUUID(), player.tickCount);
+        this.handedOver.record(player.getUUID(), player, player.level(), player.tickCount);
     }
 
     /** Whether Epic Fight, not Yes Steve Model, is drawing this player. */
     public boolean epicFightDraws(AbstractClientPlayer player) {
-        Integer tick = this.epicFightDrew.get(player.getUUID());
-
-        if (tick != null && player.tickCount - tick <= FOREIGN_RENDERER_MEMORY_TICKS) {
+        if (this.epicFightDrew.contains(player.getUUID(), player, player.level(), player.tickCount)) {
             return true;
         }
 
@@ -173,8 +175,7 @@ public final class ModelManager {
         // like the rest, the model came back from a transformation posed
         // by Yes Steve Model alone for half a second before Epic Fight's
         // animation was put on it again.
-        Integer handed = this.handedOver.get(player.getUUID());
-        return handed != null && player.tickCount - handed <= FOREIGN_RENDERER_MEMORY_TICKS
+        return this.handedOver.contains(player.getUUID(), player, player.level(), player.tickCount)
                 && com.argorice.epicysm.client.compat.LookOwners.ownsLook(player);
     }
 
@@ -216,7 +217,8 @@ public final class ModelManager {
 
         Integer seenTick = this.foreignRendererSeen.get(player.getUUID());
 
-        if (seenTick == null || player.tickCount - seenTick > FOREIGN_RENDERER_MEMORY_TICKS) {
+        if (seenTick == null || player.tickCount < seenTick
+                || (long) player.tickCount - seenTick > FOREIGN_RENDERER_MEMORY_TICKS) {
             this.yielded.remove(player.getUUID());
             return false;
         }
@@ -243,12 +245,76 @@ public final class ModelManager {
         return yield;
     }
 
+    /** Clears player state when the world or the player entity changes. */
+    public void tick() {
+        var client = Minecraft.getInstance();
+
+        if (this.observedLevel != client.level) {
+            this.clearPlayerStates();
+            this.observedLevel = client.level;
+        }
+
+        if (client.player != null && client.level != null) {
+            this.observePlayerInstance(client.player);
+        }
+    }
+
+    private void observePlayerInstance(AbstractClientPlayer player) {
+        AbstractClientPlayer previous = this.playerInstances.get(player.getUUID());
+
+        if (previous != null && previous != player) {
+            this.forgetPlayer(player.getUUID());
+            Diag.info("Player {} has a new entity instance; rebuilding its model and skeleton", player.getName().getString());
+        }
+
+        this.playerInstances.put(player.getUUID(), player);
+    }
+
+    private void forgetPlayer(java.util.UUID player) {
+        this.playerInstances.remove(player);
+        this.foreignRendererSeen.remove(player);
+        this.foreignSignatures.remove(player);
+        this.unreadableAttempts.remove(player);
+        this.probedModels.remove(player);
+        this.foreignTextures.remove(player);
+        this.skeletonAttempts.remove(player);
+        this.epicFightDrew.remove(player);
+        this.handedOver.remove(player);
+        this.yielded.remove(player);
+        com.argorice.epicysm.client.ysm.YsmSkeletonOverlay.forget(player);
+        com.argorice.epicysm.client.compat.LookOwners.forget(player);
+    }
+
+    private void clearPlayerStates() {
+        this.playerInstances.clear();
+        this.foreignRendererSeen.clear();
+        this.foreignSignatures.clear();
+        this.unreadableAttempts.clear();
+        this.probedModels.clear();
+        this.foreignTextures.clear();
+        this.skeletonAttempts.clear();
+        this.epicFightDrew.clear();
+        this.handedOver.clear();
+        this.yielded.clear();
+        this.lastForeignRenderer = null;
+        this.lastForeignTexture = null;
+        this.observedFrames = 0;
+        com.argorice.epicysm.client.ysm.YsmSkeletonOverlay.resetAll();
+        com.argorice.epicysm.client.compat.LookOwners.resetAll();
+    }
+
     /** Forgets players that left the world, so nothing accumulates. */
     private void forgetGonePlayers() {
         var level = Minecraft.getInstance().level;
 
         if (level == null) {
             return;
+        }
+
+        for (java.util.UUID uuid : new HashSet<>(this.playerInstances.keySet())) {
+            if (level.getPlayerByUUID(uuid) == null) {
+                this.forgetPlayer(uuid);
+            }
         }
 
         this.foreignRendererSeen.keySet().removeIf(uuid -> level.getPlayerByUUID(uuid) == null);
@@ -291,7 +357,10 @@ public final class ModelManager {
         this.unreadableAttempts.keySet().retainAll(this.foreignRendererSeen.keySet());
         this.probedModels.keySet().retainAll(this.foreignRendererSeen.keySet());
         this.yielded.keySet().retainAll(this.foreignRendererSeen.keySet());
-        this.handedOver.keySet().retainAll(this.foreignRendererSeen.keySet());
+        this.handedOver.retainAll(this.foreignRendererSeen.keySet());
+        this.epicFightDrew.retainAll(this.foreignRendererSeen.keySet());
+        this.foreignTextures.keySet().retainAll(this.foreignRendererSeen.keySet());
+        this.skeletonAttempts.keySet().retainAll(this.foreignRendererSeen.keySet());
     }
 
     /**
@@ -333,6 +402,8 @@ public final class ModelManager {
 
         // Yes Steve Model builds the model afresh when it is selected, so
         // the bone objects found last time belong to the previous copy of
+        this.epicFightDrew.remove(player.getUUID());
+        this.handedOver.remove(player.getUUID());
         com.argorice.epicysm.client.ysm.YsmSkeletonOverlay.forget(player.getUUID());
 
         // Primary signal: the pixels of the texture the foreign renderer
@@ -665,16 +736,10 @@ public final class ModelManager {
 
         this.converted.clear();
         this.failed.clear();
-        this.probedModels.clear();
-        this.foreignSignatures.clear();
-        this.foreignRendererSeen.clear();
-        this.unreadableAttempts.clear();
-        this.yielded.clear();
+        this.clearPlayerStates();
         this.textureMatcher.reset();
         com.argorice.epicysm.client.render.PhysicsAnimator.get().reset();
         com.argorice.epicysm.client.render.OwnAnimator.get().reset();
-        com.argorice.epicysm.client.compat.LookOwners.resetAll();
-        com.argorice.epicysm.client.ysm.YsmSkeletonOverlay.resetAll();
         this.diskBoneNames.clear();
         this.sources = null;
     }

@@ -136,6 +136,19 @@ motion (when physics is enabled in the settings).
 The jar lands in `build/libs/`. Epic Fight is pulled from the Modrinth maven; a jar placed in
 `local/libs/` is used instead when present.
 
+## Fork releases
+
+Fork versions append a revision to the upstream version, starting with `0.0.1`.
+For example, upstream `1.1.3` becomes `1.1.3-0.0.1`.
+
+The build workflow compiles the mod and runs the render ownership regression tests.
+A tag named `v<mod_version>-mc<minecraft_version>` publishes the matching JAR and
+its SHA-256 checksum as a GitHub Release after the build succeeds.
+
+Player render ownership and skeleton bindings are refreshed when the player entity
+or world changes, including death and respawn. The reload command also clears this
+state.
+
 ## Credits
 
 EpicYSM is a bridge between two mods that do all the heavy lifting:

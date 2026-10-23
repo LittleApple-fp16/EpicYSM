@@ -53,6 +53,8 @@ public final class EpicYsmClient {
                 return;
             }
 
+            ModelManager.get().tick();
+
             while (SETTINGS_KEY.consumeClick()) {
                 Minecraft minecraft = Minecraft.getInstance();
 
