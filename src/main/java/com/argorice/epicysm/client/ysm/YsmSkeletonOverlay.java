@@ -358,6 +358,7 @@ public final class YsmSkeletonOverlay {
 
     private Stage stage = Stage.IDLE;
     private UUID owner;
+    private AbstractClientPlayer ownerEntity;
     private ResourceLocation subject;
     private Map<Role, List<Bone>> bones = Map.of();
     private List<Bone> allBones = List.of();
@@ -499,6 +500,7 @@ public final class YsmSkeletonOverlay {
         this.restore();
         this.stage = Stage.IDLE;
         this.owner = null;
+        this.ownerEntity = null;
         this.subject = null;
         this.bones = Map.of();
         this.allBones = List.of();
@@ -549,7 +551,8 @@ public final class YsmSkeletonOverlay {
      * either to find the skeleton, to measure it, or to pose it.
      */
     public boolean wants(AbstractClientPlayer player, ResourceLocation texture) {
-        if (this.stage == Stage.GIVEN_UP && player.getUUID().equals(this.owner) && sameTexture(texture, this.subject)) {
+        if (this.stage == Stage.GIVEN_UP && player == this.ownerEntity && player.getUUID().equals(this.owner)
+                && sameTexture(texture, this.subject)) {
             return false;
         }
 
@@ -562,7 +565,8 @@ public final class YsmSkeletonOverlay {
      */
     public void prepare(AbstractClientPlayer player, Object renderer, ResourceLocation texture) {
         try {
-            boolean sameModel = player.getUUID().equals(this.owner) && sameTexture(texture, this.subject);
+            boolean sameModel = player == this.ownerEntity && player.getUUID().equals(this.owner)
+                    && sameTexture(texture, this.subject);
 
             if (sameModel && this.stage != Stage.IDLE) {
                 return;
@@ -583,6 +587,7 @@ public final class YsmSkeletonOverlay {
 
             this.reset();
             this.owner = player.getUUID();
+            this.ownerEntity = player;
             this.subject = texture;
             this.discover(player, renderer, texture);
         } catch (Throwable t) {
@@ -1405,9 +1410,11 @@ public final class YsmSkeletonOverlay {
             EpicYsm.LOGGER.info("Skeleton overlay: the skeleton found never moved while the model was drawn ({} bone(s));"
                     + " looking for another copy of it ({} passed over so far)", this.allBones.size(), this.deadCopies.size());
             UUID owner = this.owner;
+            AbstractClientPlayer ownerEntity = this.ownerEntity;
             ResourceLocation subject = this.subject;
             this.reset();
             this.owner = owner;
+            this.ownerEntity = ownerEntity;
             this.subject = subject;
             this.stage = Stage.IDLE;
             this.searches = 0;
@@ -3223,9 +3230,11 @@ public final class YsmSkeletonOverlay {
         EpicYsm.LOGGER.info("Skeleton overlay: Yes Steve Model has stopped animating the skeleton being posed -"
                 + " it draws this model from a newer copy now - so the model is read again");
         UUID owner = this.owner;
+        AbstractClientPlayer ownerEntity = this.ownerEntity;
         ResourceLocation subject = this.subject;
         this.reset();
         this.owner = owner;
+        this.ownerEntity = ownerEntity;
         this.subject = subject;
         this.stage = Stage.IDLE;
         this.searches = 0;
