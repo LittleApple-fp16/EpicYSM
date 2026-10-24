@@ -1,5 +1,7 @@
 package com.argorice.epicysm.client.ysm;
 
+import com.argorice.epicysm.compat.YsmProvider;
+
 import javax.annotation.Nullable;
 
 import net.minecraft.client.player.AbstractClientPlayer;
@@ -14,8 +16,6 @@ import net.minecraft.nbt.Tag;
  * the obfuscated jar is needed for it.
  */
 public final class YsmSelection {
-    /** The compound Yes Steve Model saves the choice under, on any loader. */
-    private static final String KEY = "yes_steve_model:model_id";
 
     /** @param texture the texture chosen within the model, as Yes Steve Model names it */
     public record Selection(String modelId, String texture, boolean disabled) {
@@ -47,8 +47,10 @@ public final class YsmSelection {
      */
     @Nullable
     private static CompoundTag find(CompoundTag tag, int depth) {
-        if (tag.contains(KEY, Tag.TAG_COMPOUND)) {
-            return tag.getCompound(KEY);
+        for (String key : YsmProvider.SELECTION_KEYS) {
+            if (tag.contains(key, Tag.TAG_COMPOUND)) {
+                return tag.getCompound(key);
+            }
         }
 
         if (depth >= 2) {

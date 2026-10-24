@@ -1,5 +1,7 @@
 package com.argorice.epicysm;
 
+import com.argorice.epicysm.compat.YsmProvider;
+
 import com.mojang.logging.LogUtils;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -18,6 +20,7 @@ public final class EpicYsm {
 
     public EpicYsm(IEventBus modBus, ModContainer container) {
         if (FMLEnvironment.dist == Dist.CLIENT) {
+            YsmProvider.require(net.neoforged.fml.ModList.get()::isLoaded);
             EpicYsmClient.init(modBus, container);
         }
     }

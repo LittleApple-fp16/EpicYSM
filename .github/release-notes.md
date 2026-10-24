@@ -1,5 +1,3 @@
-Preserves outfit, accessory and body scale settings by rendering dynamic models through Yes Steve Model with Epic Fight's skeleton overlay. Models sharing the same texture and bone names no longer select an arbitrary model copy.
+Adds OpenYSM as an alternative to Yes Steve Model. Either provider satisfies the client dependency. Runtime class discovery, live skeleton access, render events, model selection data, model folders and held-item caller detection recognize OpenYSM namespaces.
 
-Includes regression coverage for Kipfel outfit expressions, animated visibility and ambiguous skeleton matches, plus the existing respawn cache tests.
-
-Respawn and world-change fixes from 0.0.1 remain included.
+Includes the wardrobe, ambiguous model selection and respawn fixes from 0.0.2.

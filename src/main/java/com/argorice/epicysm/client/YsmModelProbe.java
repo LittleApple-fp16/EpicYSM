@@ -1,5 +1,7 @@
 package com.argorice.epicysm.client;
 
+import com.argorice.epicysm.compat.YsmProvider;
+
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -25,7 +27,6 @@ import com.argorice.epicysm.client.model.YsmModelSource;
  * renderer is currently using.
  */
 public final class YsmModelProbe {
-    private static final String FOREIGN_PACKAGE = "com.elfmcys.";
     private static final int MAX_NODES = 60000;
     private static final int MAX_DEPTH = 12;
     private static final int MAX_LOGGED_STRINGS = 40;
@@ -268,7 +269,7 @@ public final class YsmModelProbe {
     }
 
     private static boolean isForeignClass(Class<?> type) {
-        return type.getName().startsWith(FOREIGN_PACKAGE);
+        return YsmProvider.isRuntimeClass(type);
     }
 
     private static Iterable<?> limit(Collection<?> collection) {
