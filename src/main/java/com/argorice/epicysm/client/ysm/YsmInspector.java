@@ -1,5 +1,7 @@
 package com.argorice.epicysm.client.ysm;
 
+import com.argorice.epicysm.compat.YsmProvider;
+
 import java.io.IOException;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
@@ -30,7 +32,6 @@ import com.argorice.epicysm.EpicYsm;
 
 /** Maps out Yes Steve Model's live object graph and writes a report. */
 public final class YsmInspector {
-    private static final String YSM_PACKAGE = "com.elfmcys.";
     private static final int MAX_NODES = 400_000;
     private static final int MAX_INSTANCES_PER_CLASS = 40;
     private static final int MAX_DEPTH = 20;
@@ -597,7 +598,7 @@ public final class YsmInspector {
     }
 
     private static boolean isYsmClass(Class<?> type) {
-        return type != null && type.getName().startsWith(YSM_PACKAGE);
+        return YsmProvider.isRuntimeClass(type);
     }
 
     private static String describeClass(Object value) {
@@ -605,7 +606,7 @@ public final class YsmInspector {
     }
 
     private static String shortName(String className) {
-        return className.startsWith(YSM_PACKAGE) ? className.substring(YSM_PACKAGE.length()) : className;
+        return YsmProvider.shortClassName(className);
     }
 
     private static String describeKey(Object key) {

@@ -37,7 +37,14 @@ side = "CLIENT"
 
 [[dependencies.${mod_id}]]
 modId = "yes_steve_model"
-mandatory = true
+mandatory = false
+versionRange = "${ysm_version_range}"
+ordering = "AFTER"
+side = "CLIENT"
+
+[[dependencies.${mod_id}]]
+modId = "openysm"
+mandatory = false
 versionRange = "${ysm_version_range}"
 ordering = "AFTER"
 side = "CLIENT"

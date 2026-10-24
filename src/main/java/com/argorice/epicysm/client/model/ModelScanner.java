@@ -1,5 +1,7 @@
 package com.argorice.epicysm.client.model;
 
+import com.argorice.epicysm.compat.YsmProvider;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,9 +20,11 @@ public final class ModelScanner {
         Path configDir = gameDirectory.resolve("config");
 
         scanDirectory(configDir.resolve("epicysm/models"), result, 4);
-        scanDirectory(configDir.resolve("yes_steve_model/custom"), result, 4);
-        scanDirectory(configDir.resolve("yes_steve_model/builtin"), result, 4);
-        scanDirectory(configDir.resolve("yes_steve_model/auth"), result, 4);
+        for (String directory : YsmProvider.MODEL_DIRECTORIES) {
+            for (String category : new String[] { "custom", "builtin", "auth" }) {
+                scanDirectory(configDir.resolve(directory).resolve(category), result, 4);
+            }
+        }
 
         return result;
     }

@@ -15,7 +15,7 @@ Outside of Epic Fight's battle mode nothing changes: YSM keeps doing emotes, idl
 animations exactly as before.
 
 - Minecraft 1.20.1, Forge 47+ (this branch; the `main` branch is 1.21.1 / NeoForge)
-- Requires Epic Fight 20.14+ and Yes Steve Model 2.6+
+- Requires Epic Fight 20.14+ and either Yes Steve Model 2.6+ or OpenYSM 2.6+
 - Client side only. Nothing to install on a server. Every player on screen is posed with
   their own model.
 
@@ -23,6 +23,9 @@ animations exactly as before.
   <img src="https://raw.githubusercontent.com/Argorice/EpicYSM/1.20.1/branding/scythe.gif" width="49%" alt="Scythe combo on an encrypted YSM model">
   <img src="https://raw.githubusercontent.com/Argorice/EpicYSM/1.20.1/branding/katana.gif" width="49%" alt="Dodge and slash with a long blade">
 </p>
+
+OpenYSM is supported as an alternative model provider. Provider class discovery, model
+selection and model directories recognize both `yes_steve_model` and `openysm`.
 
 ## How it works
 

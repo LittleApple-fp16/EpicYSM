@@ -1,5 +1,7 @@
 package com.argorice.epicysm;
 
+import com.argorice.epicysm.compat.YsmProvider;
+
 import com.mojang.logging.LogUtils;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.common.Mod;
@@ -17,6 +19,7 @@ public final class EpicYsm {
 
     public EpicYsm() {
         if (FMLEnvironment.dist == Dist.CLIENT) {
+            YsmProvider.require(net.minecraftforge.fml.ModList.get()::isLoaded);
             EpicYsmClient.init(FMLJavaModLoadingContext.get().getModEventBus());
         }
     }

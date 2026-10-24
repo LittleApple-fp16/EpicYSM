@@ -1,5 +1,7 @@
 package com.argorice.epicysm.client;
 
+import com.argorice.epicysm.compat.YsmProvider;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.Iterator;
@@ -100,7 +102,7 @@ final class YsmWarning {
         }
 
         String lower = text.toString().toLowerCase(java.util.Locale.ROOT);
-        return lower.contains("yes_steve_model") && lower.contains("incompatible")
+        return YsmProvider.mentionedIn(lower) && lower.contains("incompatible")
                 && (lower.contains("epic fight") || lower.contains("epicfight"));
     }
 }

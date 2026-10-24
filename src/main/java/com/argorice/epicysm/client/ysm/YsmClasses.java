@@ -3,167 +3,111 @@ package com.argorice.epicysm.client.ysm;
 import java.lang.module.ModuleReader;
 import java.lang.module.ResolvedModule;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.forgespi.language.ModFileScanData;
 
 import com.argorice.epicysm.EpicYsm;
+import com.argorice.epicysm.compat.YsmProvider;
 
-/**
- * Names of the classes Yes Steve Model ships, taken from what the loader
- * already knows about the mod: its scan data first, its module second.
- */
+/** Lists provider classes through loader scan data or the renderer's module. */
 final class YsmClasses {
-    private static final String YSM_PACKAGE = "com.elfmcys.";
-    private static final String MOD_ID = "yes_steve_model";
-
     private static List<String> names;
 
     private YsmClasses() {
     }
 
-    /** @param sample any object of Yes Steve Model's, to find its module by */
     static synchronized List<String> names(Object sample) {
         if (names != null) {
             return names;
         }
-
-        List<String> found = fromScan();
+        List<String> found = fromScan(null);
         String route = "scan";
-
         if (found.isEmpty()) {
             found = fromModule(sample);
             route = "module";
         }
-
         if (found.isEmpty()) {
-            // Nothing yet; try again next time rather than remembering a blank.
-            EpicYsm.LOGGER.warn("Yes Steve Model: none of its classes could be listed, so its live model cannot be found");
+            EpicYsm.LOGGER.warn("YSM provider classes could not be listed; its live model cannot be found yet");
             return List.of();
         }
-
-        EpicYsm.LOGGER.info("Yes Steve Model: {} classes known ({})", found.size(), route);
+        EpicYsm.LOGGER.info("YSM provider: {} classes known ({})", found.size(), route);
         names = List.copyOf(found);
         return names;
     }
 
-    private static List<String> fromScan() {
-        List<String> found = new ArrayList<>();
-
-        try {
-            var modFile = ModList.get().getModFileById(MOD_ID);
-            ModFileScanData scan = modFile == null ? null : modFile.getFile().getScanResult();
-
-            if (scan != null) {
-                for (ModFileScanData.ClassData data : scan.getClasses()) {
-                    String className = classNameOf(data);
-
-                    if (className == null) {
-                        continue;
-                    }
-
-                    if (className.startsWith(YSM_PACKAGE)) {
-                        found.add(className);
-                    }
-                }
-            }
-        } catch (Throwable t) {
-            EpicYsm.LOGGER.debug("Yes Steve Model scan data unavailable", t);
-        }
-
-        return found;
-    }
-
-    /**
-     * Yes Steve Model's classes that extend the named class directly, read
-     * off the loader's scan of its jar - so that a class can be found by
-     * what it is rather than by its obfuscated name.
-     */
     public static List<String> extending(String parentClassName) {
-        List<String> found = new ArrayList<>();
-
-        try {
-            var modFile = ModList.get().getModFileById(MOD_ID);
-            ModFileScanData scan = modFile == null ? null : modFile.getFile().getScanResult();
-
-            if (scan != null) {
-                for (ModFileScanData.ClassData data : scan.getClasses()) {
-                    String className = classNameOf(data);
-                    String parent = typeNameOf(data, "parent", "getParent");
-
-                    if (className != null && className.startsWith(YSM_PACKAGE) && parentClassName.equals(parent)) {
-                        found.add(className);
-                    }
-                }
-            }
-        } catch (Throwable t) {
-            EpicYsm.LOGGER.debug("Yes Steve Model scan data unavailable", t);
-        }
-
-        return found;
+        return fromScan(parentClassName);
     }
 
-    /** The class name inside a scan entry; the accessor is named differently across loader builds. */
-    private static String classNameOf(ModFileScanData.ClassData data) {
-        return typeNameOf(data, "clazz", "getClazz");
+    private static List<String> fromScan(String parentClassName) {
+        Set<String> found = new LinkedHashSet<>();
+        for (String modId : YsmProvider.MOD_IDS) {
+            try {
+                var modFile = ModList.get().getModFileById(modId);
+                ModFileScanData scan = modFile == null ? null : modFile.getFile().getScanResult();
+                if (scan == null) {
+                    continue;
+                }
+                for (ModFileScanData.ClassData data : scan.getClasses()) {
+                    String name = typeNameOf(data, "clazz", "getClazz");
+                    if (YsmProvider.isRuntimeClass(name) && (parentClassName == null
+                            || parentClassName.equals(typeNameOf(data, "parent", "getParent")))) {
+                        found.add(name);
+                    }
+                }
+            } catch (Throwable t) {
+                EpicYsm.LOGGER.debug("Scan data unavailable for {}", modId, t);
+            }
+        }
+        return new ArrayList<>(found);
     }
 
     private static String typeNameOf(ModFileScanData.ClassData data, String... accessors) {
         for (String accessor : accessors) {
             try {
                 Object type = data.getClass().getMethod(accessor).invoke(data);
-
                 if (type instanceof org.objectweb.asm.Type asmType) {
                     return asmType.getClassName();
                 }
-            } catch (Throwable ignored) {
+            } catch (ReflectiveOperationException ignored) {
             }
         }
-
         return null;
     }
 
-    /** The module the loader built for the mod, listed through the module system. */
     private static List<String> fromModule(Object sample) {
         List<String> found = new ArrayList<>();
-
         try {
             if (sample == null) {
                 return found;
             }
-
             Module module = sample.getClass().getModule();
-
             if (!module.isNamed() || module.getLayer() == null) {
                 return found;
             }
-
             Optional<ResolvedModule> resolved = module.getLayer().configuration().findModule(module.getName());
-
             if (resolved.isEmpty()) {
                 return found;
             }
-
             try (ModuleReader reader = resolved.get().reference().open(); Stream<String> entries = reader.list()) {
                 for (String entry : (Iterable<String>) entries::iterator) {
-                    if (!entry.endsWith(".class") || entry.equals("module-info.class")) {
-                        continue;
-                    }
-
-                    String className = entry.substring(0, entry.length() - 6).replace('/', '.');
-
-                    if (className.startsWith(YSM_PACKAGE)) {
-                        found.add(className);
+                    if (entry.endsWith(".class") && !entry.equals("module-info.class")) {
+                        String name = entry.substring(0, entry.length() - 6).replace('/', '.');
+                        if (YsmProvider.isRuntimeClass(name)) {
+                            found.add(name);
+                        }
                     }
                 }
             }
         } catch (Throwable t) {
-            EpicYsm.LOGGER.debug("Yes Steve Model module unavailable", t);
+            EpicYsm.LOGGER.debug("YSM provider module unavailable", t);
         }
-
         return found;
     }
 }

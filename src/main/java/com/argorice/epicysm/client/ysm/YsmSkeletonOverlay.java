@@ -1,5 +1,7 @@
 package com.argorice.epicysm.client.ysm;
 
+import com.argorice.epicysm.compat.YsmProvider;
+
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -75,7 +77,6 @@ public final class YsmSkeletonOverlay {
         return new java.util.HashSet<>(BY_PLAYER.keySet());
     }
 
-    private static final String YSM_PACKAGE = "com.elfmcys.";
     private static final int DISCOVERY_NODES = 200_000;
     private static final int DISCOVERY_DEPTH = 16;
     private static final int MIN_BONES = 5;
@@ -4056,6 +4057,6 @@ public final class YsmSkeletonOverlay {
     }
 
     private static boolean isYsmClass(Class<?> type) {
-        return type != null && type.getName().startsWith(YSM_PACKAGE);
+        return YsmProvider.isRuntimeClass(type);
     }
 }

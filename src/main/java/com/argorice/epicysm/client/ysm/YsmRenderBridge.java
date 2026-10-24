@@ -1,5 +1,7 @@
 package com.argorice.epicysm.client.ysm;
 
+import com.argorice.epicysm.compat.YsmProvider;
+
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import java.util.ArrayList;
@@ -757,7 +759,7 @@ public final class YsmRenderBridge {
 
                     // The first frame below the item renderer is whoever
                     // asked for an item to be drawn.
-                    boolean hand = name.startsWith("com.elfmcys.yesstevemodel")
+                    boolean hand = YsmProvider.isRuntimeClass(name)
                             || name.contains("ItemInHandLayer");
                     return hand ? name : null;
                 }

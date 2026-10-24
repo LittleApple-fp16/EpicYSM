@@ -1,5 +1,7 @@
 package com.argorice.epicysm.client.ysm;
 
+import com.argorice.epicysm.compat.YsmProvider;
+
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -28,7 +30,6 @@ import com.argorice.epicysm.EpicYsm;
  * currently showing: bone names, their pivots, and who hangs off whom.
  */
 public final class YsmLiveSkeleton {
-    private static final String YSM_PACKAGE = "com.elfmcys.";
     private static final int MAX_NODES = 200_000;
     private static final int MAX_DEPTH = 16;
     private static final int MIN_BONES = 6;
@@ -1086,6 +1087,6 @@ public final class YsmLiveSkeleton {
     }
 
     private static boolean isYsmClass(Class<?> type) {
-        return type != null && type.getName().startsWith(YSM_PACKAGE);
+        return YsmProvider.isRuntimeClass(type);
     }
 }

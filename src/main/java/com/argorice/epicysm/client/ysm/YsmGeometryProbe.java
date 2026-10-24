@@ -1,5 +1,7 @@
 package com.argorice.epicysm.client.ysm;
 
+import com.argorice.epicysm.compat.YsmProvider;
+
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -31,7 +33,6 @@ import com.argorice.epicysm.EpicYsm;
  * memory, so this mod can learn to draw that model itself.
  */
 public final class YsmGeometryProbe {
-    private static final String YSM_PACKAGE = "com.elfmcys.";
     private static final int MAX_NODES = 200_000;
     private static final int MAX_DEPTH = 16;
     private static final int HOPS_FROM_BONE = 3;
@@ -644,10 +645,10 @@ public final class YsmGeometryProbe {
     }
 
     private static boolean isYsmClass(Class<?> type) {
-        return type != null && type.getName().startsWith(YSM_PACKAGE);
+        return YsmProvider.isRuntimeClass(type);
     }
 
     private static String shortName(String className) {
-        return className.startsWith(YSM_PACKAGE) ? className.substring(YSM_PACKAGE.length()) : className;
+        return YsmProvider.shortClassName(className);
     }
 }
