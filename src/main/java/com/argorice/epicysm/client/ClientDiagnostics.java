@@ -152,6 +152,17 @@ public final class ClientDiagnostics {
         return out;
     }
 
+    public static void worldBoundary(Object previous, Object next) {
+        try {
+            JsonObject state = snapshot(Minecraft.getInstance().player, true);
+            state.addProperty("previous_world", identity(previous));
+            state.addProperty("next_world", identity(next));
+            event("world_change", state);
+        } catch (Throwable error) {
+            event("world_change", fields("previous", identity(previous), "next", identity(next), "snapshot_error", error.toString()));
+        }
+    }
+
     public static void tick() {
         try {
             long now = System.nanoTime();
