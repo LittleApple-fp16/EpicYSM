@@ -695,7 +695,11 @@ public final class YsmSkeletonOverlay {
      * skeleton and before it draws. This is the only moment a write survives.
      */
     public void onDraw(AbstractClientPlayer player, float partialTicks) {
-        float[] appearanceBefore = this.diagnosticAppearanceSample();
+        float[] appearanceBefore = null;
+        try {
+            appearanceBefore = this.diagnosticAppearanceSample();
+        } catch (Throwable ignored) {
+        }
         try {
             switch (this.stage) {
                 case MEASURING -> this.measure();
@@ -707,7 +711,10 @@ public final class YsmSkeletonOverlay {
             EpicYsm.LOGGER.warn("Skeleton overlay stopped while posing the skeleton", t);
             this.diagnosticStop("pose_exception", t);
         } finally {
-            this.diagnosticCompareAppearance(appearanceBefore);
+            try {
+                this.diagnosticCompareAppearance(appearanceBefore);
+            } catch (Throwable ignored) {
+            }
         }
     }
 

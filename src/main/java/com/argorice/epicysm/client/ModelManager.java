@@ -247,8 +247,7 @@ public final class ModelManager {
         var client = Minecraft.getInstance();
 
         if (this.observedLevel != client.level) {
-            ClientDiagnostics.event("world_change", ClientDiagnostics.fields("previous", ClientDiagnostics.identity(this.observedLevel),
-                    "next", ClientDiagnostics.identity(client.level), "bridge", com.argorice.epicysm.client.ysm.YsmRenderBridge.diagnosticState()));
+            ClientDiagnostics.worldBoundary(this.observedLevel, client.level);
             this.clearPlayerStates();
             this.observedLevel = client.level;
         }
