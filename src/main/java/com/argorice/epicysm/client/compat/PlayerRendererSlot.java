@@ -31,6 +31,26 @@ public final class PlayerRendererSlot {
     private static int lastCheckTick = Integer.MIN_VALUE;
     private static boolean gaveUp;
 
+    /** Records the exact tick guard and renderer identity without repairing the slot. */
+    public static com.google.gson.JsonObject diagnosticState(int tick) {
+        var out = com.argorice.epicysm.client.ClientDiagnostics.fields("last_check_tick", lastCheckTick, "tick", tick,
+                "integer_age", tick - lastCheckTick, "long_age", (long) tick - lastCheckTick,
+                "gave_up", gaveUp, "context", com.argorice.epicysm.client.ClientDiagnostics.identity(context),
+                "overflow_blocks_check", context != null && tick - lastCheckTick < 100 && (long) tick - lastCheckTick >= 100);
+        try {
+            Object engine = ClientEngine.getInstance().renderEngine;
+            for (Field field : engine.getClass().getDeclaredFields()) {
+                if (Map.class.isAssignableFrom(field.getType()) && field.trySetAccessible() && field.get(engine) instanceof Map<?, ?> map
+                        && map.containsKey(EntityType.PLAYER)) {
+                    out.addProperty("player_entry_" + field.getName(), com.argorice.epicysm.client.ClientDiagnostics.identity(map.get(EntityType.PLAYER)));
+                }
+            }
+        } catch (Throwable error) {
+            out.addProperty("renderer_error", error.toString());
+        }
+        return out;
+    }
+
     private PlayerRendererSlot() {
     }
 

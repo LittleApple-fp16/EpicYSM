@@ -151,11 +151,13 @@ public final class ModelManager {
     /** Epic Fight has just drawn this player with a converted model. */
     public void noteEpicFightRendered(AbstractClientPlayer player) {
         this.epicFightDrew.record(player.getUUID(), player, player.level(), player.tickCount);
+        ClientDiagnostics.frame(player, "converted", this.diagnosticState(player));
     }
 
     /** Another mod's renderer, the one behind this mod's, has just drawn this player as something else. */
     public void noteHandedOver(AbstractClientPlayer player) {
         this.handedOver.record(player.getUUID(), player, player.level(), player.tickCount);
+        ClientDiagnostics.frame(player, "handed_over", this.diagnosticState(player));
     }
 
     /** Whether Epic Fight, not Yes Steve Model, is drawing this player. */
@@ -224,6 +226,7 @@ public final class ModelManager {
         boolean yield = model == null;
         if (yield != this.yielded.getOrDefault(player.getUUID(), Boolean.FALSE)) {
             this.yielded.put(player.getUUID(), yield);
+            ClientDiagnostics.event("render_route", this.diagnosticState(player));
             if (yield && (liveAppearance || ambiguous)) {
                 EpicYsm.LOGGER.info("Player {} uses Yes Steve Model's live appearance with Epic Fight's skeleton overlay ({})",
                         player.getName().getString(), ambiguous ? "model selection is ambiguous" : "dynamic scale channels");
@@ -244,6 +247,8 @@ public final class ModelManager {
         var client = Minecraft.getInstance();
 
         if (this.observedLevel != client.level) {
+            ClientDiagnostics.event("world_change", ClientDiagnostics.fields("previous", ClientDiagnostics.identity(this.observedLevel),
+                    "next", ClientDiagnostics.identity(client.level), "bridge", com.argorice.epicysm.client.ysm.YsmRenderBridge.diagnosticState()));
             this.clearPlayerStates();
             this.observedLevel = client.level;
         }
@@ -257,6 +262,8 @@ public final class ModelManager {
         AbstractClientPlayer previous = this.playerInstances.get(player.getUUID());
 
         if (previous != null && previous != player) {
+            ClientDiagnostics.event("entity_replaced", ClientDiagnostics.fields("previous", ClientDiagnostics.identity(previous), "previous_tick", previous.tickCount,
+                    "next", ClientDiagnostics.identity(player), "next_tick", player.tickCount));
             this.forgetPlayer(player.getUUID());
             Diag.info("Player {} has a new entity instance; rebuilding its model and skeleton", player.getName().getString());
         }
@@ -420,6 +427,8 @@ public final class ModelManager {
         }
 
         this.unreadableAttempts.remove(player.getUUID());
+        ClientDiagnostics.event("texture_match", ClientDiagnostics.fields("player", ClientDiagnostics.identity(player), "texture", texture,
+                "signature", signature, "readable", match.readable(), "model", match.modelId(), "candidates", match.candidates()));
         Detection detection = match.modelId().isEmpty() ? null : new Detection(match.modelId(), match.texturePath());
 
         this.ambiguousModels.remove(player.getUUID());
@@ -701,8 +710,24 @@ public final class ModelManager {
         }
     }
 
+    /** Cached routing decisions without triggering conversion or another model probe. */
+    public com.google.gson.JsonObject diagnosticState(net.minecraft.world.entity.LivingEntity entity) {
+        java.util.UUID id = entity == null ? null : entity.getUUID();
+        Detection detection = this.probedModels.get(id);
+        return ClientDiagnostics.fields("entity", ClientDiagnostics.identity(entity), "world", ClientDiagnostics.identity(this.observedLevel),
+                "foreign_renderer", ClientDiagnostics.identity(this.lastForeignRenderer), "foreign_texture", this.foreignTextures.get(id),
+                "texture_signature", this.foreignSignatures.get(id), "foreign_seen_tick", this.foreignRendererSeen.get(id),
+                "model", detection, "ambiguous", this.ambiguousModels.contains(id), "yielded", this.yielded.get(id),
+                "epic_render_recent", entity instanceof AbstractClientPlayer player && this.epicFightDrew.contains(id, player, player.level(), player.tickCount),
+                "live_appearance", detection != null && this.liveAppearanceModels.contains(detection.modelId()),
+                "conversion_failed", detection != null && this.failed.contains(detection.cacheKey()),
+                "converted_models", this.converted.keySet(), "failed_models", this.failed,
+                "live_models", this.liveAppearanceModels, "tracked_entities", this.playerInstances.size());
+    }
+
     /** Drops all caches; models are re-scanned and re-converted on next use. */
     public void reload() {
+        ClientDiagnostics.event("reload", this.diagnosticState(net.minecraft.client.Minecraft.getInstance().player));
         this.releasePending();
 
         for (ConvertedModel model : this.converted.values()) {

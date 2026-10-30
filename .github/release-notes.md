@@ -1,3 +1,3 @@
-Adds OpenYSM as an alternative to Yes Steve Model. Either provider satisfies the client dependency. Runtime class discovery, live skeleton access, render events, model selection data, model folders and held-item caller detection recognize OpenYSM namespaces.
+Adds automatic bounded runtime diagnostics for intermittent wardrobe and combat animation failures. Captures world and entity replacement, routing and texture matches, renderer tick guards, bridge shutdowns, skeleton failure reasons, raw bone slots and before/after tail-channel changes.
 
-Includes the wardrobe, ambiguous model selection and respawn fixes from 0.0.2.
+Use /epicysm report while the issue is visible to export logs and detailed snapshots as a ZIP under logs/epicysm-diagnostics. This revision records the existing rendering and recovery behavior.

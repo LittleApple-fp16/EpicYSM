@@ -144,6 +144,18 @@ motion (when physics is enabled in the settings).
 The jar lands in `build/libs/`. Epic Fight is pulled from the Modrinth maven; a jar placed in
 `local/libs/` is used instead when present.
 
+## Runtime diagnostics
+
+Runtime diagnostics are enabled automatically in this revision. The folder
+"logs/epicysm-diagnostics" contains a timeline across world changes and restarts,
+model routing, renderer state and sampled live skeleton data. Incidents include the
+preceding events, raw bone slots and exception traces. Logs rotate at 4 MiB, keeping
+four log files and twelve incident snapshots.
+
+Run "/epicysm report" while the problem is visible to export a ZIP in that folder.
+Keep this ZIP before restarting. This diagnostic revision preserves the existing
+rendering and recovery policy so the triggering state remains observable.
+
 ## Fork releases
 
 Fork versions append a revision to the upstream version, starting with `0.0.1`.

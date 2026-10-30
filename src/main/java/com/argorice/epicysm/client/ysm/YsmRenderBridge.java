@@ -36,6 +36,19 @@ public final class YsmRenderBridge {
     @Nullable
     private static LivingEntity drawn;
     private static boolean disabled;
+    private static String diagnosticDisabledReason = "";
+    private static long diagnosticAttempts;
+    private static long diagnosticWindows;
+    private static long diagnosticVertices;
+
+    public static com.google.gson.JsonObject diagnosticState() {
+        return com.argorice.epicysm.client.ClientDiagnostics.fields("disabled", disabled, "disabled_reason", diagnosticDisabledReason,
+                "inside", inside, "drawn", com.argorice.epicysm.client.ClientDiagnostics.identity(drawn), "failures", failures,
+                "no_window_renders", rendersWithoutWindow, "attempts", diagnosticAttempts, "windows", diagnosticWindows,
+                "first_vertices", diagnosticVertices, "loose_item_matching", loose, "no_hand_item_renders", rendersWithoutHandItem);
+    }
+
+
     private static boolean saidPutBack;
     private static int rendersWithoutWindow;
 
@@ -53,6 +66,8 @@ public final class YsmRenderBridge {
 
     /** Puts the bridge back in play, e.g. after the settings. */
     public static void enable() {
+        com.argorice.epicysm.client.ClientDiagnostics.event("bridge_enabled", diagnosticState());
+        diagnosticDisabledReason = "";
         disabled = false;
         rendersWithoutWindow = 0;
         failures = 0;
@@ -102,7 +117,9 @@ public final class YsmRenderBridge {
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static boolean intercept(RenderLivingEvent.Pre<?, ?> event, LivingEntity player,
                                     ResourceLocation texture, boolean yieldingToYsm) {
+        diagnosticAttempts++;
         if (inside || disabled) {
+            if (!inside) com.argorice.epicysm.client.ClientDiagnostics.frame(player, "bridge_disabled", diagnosticState());
             // The nested pass: let it run untouched, this is YSM drawing.
             return false;
         }
@@ -205,6 +222,7 @@ public final class YsmRenderBridge {
             // that names nobody. Cleared here, the failure is one line in
             // the log and one player drawn by Yes Steve Model alone.
             PoseStacks.unwind(event.getPoseStack(), mark);
+            com.argorice.epicysm.client.ClientDiagnostics.problem("bridge_render_exception", player, t);
 
             // Once may be another mod's bad frame; a pattern is this mod's
             // problem, and then it steps aside for the rest of the session.
@@ -212,6 +230,8 @@ public final class YsmRenderBridge {
                 EpicYsm.LOGGER.warn("Yes Steve Model refused to be re-rendered with Epic Fight's pose {} times;"
                         + " leaving its rendering alone from now on", failures, t);
                 disabled = true;
+                diagnosticDisabledReason = "render_exceptions";
+                com.argorice.epicysm.client.ClientDiagnostics.problem("bridge_render_exceptions", player, t);
                 YsmSkeletonOverlay.resetAll();
             } else {
                 EpicYsm.LOGGER.warn("Yes Steve Model refused to be re-rendered with Epic Fight's pose"
@@ -282,12 +302,17 @@ public final class YsmRenderBridge {
             // nothing about players.
         } else if (++rendersWithoutWindow > 60) {
             disabled = true;
+            diagnosticDisabledReason = "missing_render_buffers";
+            com.argorice.epicysm.client.ClientDiagnostics.problem("bridge_missing_render_buffers", player, null);
             EpicYsm.LOGGER.warn("Skeleton overlay: Yes Steve Model draws this player without ever asking for a"
                     + " render buffer, so there is no moment to place Epic Fight's pose in. Its own animations"
                     + " are left alone.");
             YsmSkeletonOverlay.resetAll();
         }
 
+        com.argorice.epicysm.client.ClientDiagnostics.frame(player, "bridge_render",
+                com.argorice.epicysm.client.ClientDiagnostics.fields("opened", window.opened, "vertex", window.measured, "pose_wanted", poseWanted,
+                        "texture", texture, "renderer", com.argorice.epicysm.client.ClientDiagnostics.identity(renderer), "overlay", overlay.stageName()));
         return true;
     }
 
@@ -424,6 +449,10 @@ public final class YsmRenderBridge {
             // Model, and a pose written that early is animated over.
             if (!this.opened && (this.player instanceof net.minecraft.world.entity.player.Player || askedByYsm())) {
                 this.opened = true;
+                diagnosticWindows++;
+                com.argorice.epicysm.client.ClientDiagnostics.frame(this.player, "window_open",
+                        com.argorice.epicysm.client.ClientDiagnostics.fields("render_type", renderType, "pose_wanted", this.poseWanted,
+                                "overlay_before", YsmSkeletonOverlay.of(this.player).stageName()));
 
                 if (this.poseWanted) {
                     YsmSkeletonOverlay.of(this.player).onDraw(this.player, this.partialTicks);
@@ -498,6 +527,7 @@ public final class YsmRenderBridge {
             }
 
             this.measured = true;
+            diagnosticVertices++;
             this.measureDrawnSize();
 
             if (this.scaleWanted) {

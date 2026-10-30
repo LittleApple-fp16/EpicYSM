@@ -37,6 +37,16 @@ public final class EpicYsmCommands {
 
                     return sources.size();
                 }))
+                .then(Commands.literal("report").executes(context -> {
+                    try {
+                        var file = com.argorice.epicysm.client.ClientDiagnostics.export();
+                        context.getSource().sendSystemMessage(Component.literal("EpicYSM diagnostic report: " + file));
+                        return 1;
+                    } catch (Exception error) {
+                        context.getSource().sendSystemMessage(Component.literal("Could not export EpicYSM diagnostics: " + error));
+                        return 0;
+                    }
+                }))
                 .then(Commands.literal("reload").executes(context -> {
                     WeaponBones.reload();
                     ModelManager.get().reload();
