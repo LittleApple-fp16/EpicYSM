@@ -66,7 +66,9 @@ public final class ClientDiagnostics {
         if (entity == null) return fields("entity", "null");
         JsonObject out = fields("entity", identity(entity), "uuid", entity.getUUID(), "tick", entity.tickCount,
                 "world", identity(entity.level()), "dimension", entity.level().dimension().location(),
-                "game_time", entity.level().getGameTime(), "alive", entity.isAlive(), "sleeping", entity.isSleeping());
+                "game_time", entity.level().getGameTime(), "alive", entity.isAlive(), "sleeping", entity.isSleeping(),
+                "x", entity.getX(), "y", entity.getY(), "z", entity.getZ(), "motion", entity.getDeltaMovement(),
+                "yaw", entity.getYRot(), "pitch", entity.getXRot(), "main_hand_item", entity.getMainHandItem().getItem());
         try {
             LivingEntityPatch<?> patch = EpicFightCapabilities.getEntityPatch(entity, LivingEntityPatch.class);
             out.addProperty("patch", identity(patch));

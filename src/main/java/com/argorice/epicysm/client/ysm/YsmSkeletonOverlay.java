@@ -368,6 +368,8 @@ public final class YsmSkeletonOverlay {
     private long diagnosticLastWrite;
     private long diagnosticLastAppearance;
     private com.google.gson.JsonObject diagnosticAppearance;
+    private com.google.gson.JsonObject diagnosticSolvedPose;
+    private long diagnosticLastSolvedPose;
 
     public static com.google.gson.JsonArray diagnosticStates(boolean detailed) {
         var out = new com.google.gson.JsonArray();
@@ -392,6 +394,7 @@ public final class YsmSkeletonOverlay {
         out.add("slot_low", com.argorice.epicysm.client.ClientDiagnostics.numbers(this.slotLow, 0, 12));
         out.add("slot_high", com.argorice.epicysm.client.ClientDiagnostics.numbers(this.slotHigh, 0, 12));
         if (this.diagnosticAppearance != null) out.add("last_appearance_comparison", this.diagnosticAppearance.deepCopy());
+        if (this.diagnosticSolvedPose != null) out.add("last_solved_pose", this.diagnosticSolvedPose.deepCopy());
         var raw = new com.google.gson.JsonArray();
         var visibleClothes = new com.google.gson.JsonArray();
         int zeroScale = 0;
@@ -451,6 +454,44 @@ public final class YsmSkeletonOverlay {
         this.diagnosticAppearance = com.argorice.epicysm.client.ClientDiagnostics.fields("mode", this.mode, "observed_nanos", System.nanoTime(), "unexpected_tail_changes", unexpected);
         this.diagnosticAppearance.add("changes", changes);
         if (unexpected > 0) com.argorice.epicysm.client.ClientDiagnostics.problem("overlay_tail_channels_changed", this.ownerEntity, null);
+    }
+
+    private com.google.gson.JsonObject diagnosticSolvedBefore(Pose pose, Map<String, YsmPoseSolver.Placement> placements) {
+        try {
+            long now = System.nanoTime();
+            if (this.diagnosticLastSolvedPose != 0L && now - this.diagnosticLastSolvedPose < 2_000_000_000L) return null;
+            this.diagnosticLastSolvedPose = now;
+            var sample = com.argorice.epicysm.client.ClientDiagnostics.fields("observed_nanos", now);
+            var joints = new com.google.gson.JsonObject();
+            pose.getJointTransformData().forEach((name, transform) -> joints.add(name,
+                    com.argorice.epicysm.client.ClientDiagnostics.fields("rotation", transform.rotation(), "translation", transform.translation(), "scale", transform.scale())));
+            sample.add("epicfight_joints", joints);
+            var bones = new com.google.gson.JsonObject();
+            placements.forEach((name, placement) -> {
+                Bone bone = this.boneByName.get(name);
+                if (bone == null || !bone.hasMatrix()) return;
+                var values = com.argorice.epicysm.client.ClientDiagnostics.fields("solver_rotation", placement.rotation(), "solver_offset", placement.offset());
+                values.add("before", com.argorice.epicysm.client.ClientDiagnostics.numbers(bone.matrices(), bone.matrixAt(), 12));
+                bones.add(name, values);
+            });
+            sample.add("bones", bones);
+            return sample;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private void diagnosticSolvedAfter(com.google.gson.JsonObject sample) {
+        if (sample == null) return;
+        try {
+            for (var entry : sample.getAsJsonObject("bones").entrySet()) {
+                Bone bone = this.boneByName.get(entry.getKey());
+                if (bone != null && bone.hasMatrix()) entry.getValue().getAsJsonObject().add("after",
+                        com.argorice.epicysm.client.ClientDiagnostics.numbers(bone.matrices(), bone.matrixAt(), 12));
+            }
+            this.diagnosticSolvedPose = sample;
+        } catch (Throwable ignored) {
+        }
     }
 
     private Stage stage = Stage.IDLE;
@@ -2074,6 +2115,7 @@ public final class YsmSkeletonOverlay {
             return false;
         }
 
+        com.google.gson.JsonObject diagnosticPoseSample = this.diagnosticSolvedBefore(pose, placements);
         this.askWhereHandsAreDrawn();
         Vector3f euler = new Vector3f();
 
@@ -2123,6 +2165,7 @@ public final class YsmSkeletonOverlay {
             m[at + 5] = offset.z * placeScale;
         }
 
+        this.diagnosticSolvedAfter(diagnosticPoseSample);
         this.diagnosticPoseResult = "solver_written";
         this.diagnosticPoseWrites++;
         this.diagnosticLastWrite = System.nanoTime();
