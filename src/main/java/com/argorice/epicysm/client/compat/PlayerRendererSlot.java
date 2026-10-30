@@ -38,7 +38,7 @@ public final class PlayerRendererSlot {
                 "gave_up", gaveUp, "context", com.argorice.epicysm.client.ClientDiagnostics.identity(context),
                 "overflow_blocks_check", context != null && tick - lastCheckTick < 100 && (long) tick - lastCheckTick >= 100);
         try {
-            Object engine = ClientEngine.getInstance().renderEngine;
+            Object engine = RenderEngine.getInstance();
             for (Field field : engine.getClass().getDeclaredFields()) {
                 if (Map.class.isAssignableFrom(field.getType()) && field.trySetAccessible() && field.get(engine) instanceof Map<?, ?> map
                         && map.containsKey(EntityType.PLAYER)) {
