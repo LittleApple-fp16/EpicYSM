@@ -46,6 +46,8 @@ public final class EpicYsmClient {
         com.argorice.epicysm.client.compat.LookOwners.registerBuiltIn();
         NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post event) -> {
             ModelManager.get().tick();
+            ClientDiagnostics.tick();
+
             while (SETTINGS_KEY.consumeClick()) {
                 Minecraft minecraft = Minecraft.getInstance();
 

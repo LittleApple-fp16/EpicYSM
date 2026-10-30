@@ -357,6 +357,97 @@ public final class YsmSkeletonOverlay {
         }
     }
 
+    private String diagnosticStopReason = "";
+    private String diagnosticPoseResult = "not_written";
+    private long diagnosticPoseWrites;
+    private long diagnosticLastWrite;
+    private long diagnosticLastAppearance;
+    private com.google.gson.JsonObject diagnosticAppearance;
+
+    public static com.google.gson.JsonArray diagnosticStates(boolean detailed) {
+        var out = new com.google.gson.JsonArray();
+        for (YsmSkeletonOverlay overlay : BY_PLAYER.values()) out.add(overlay.diagnosticState(detailed));
+        return out;
+    }
+
+    private void diagnosticStop(String reason, Throwable error) {
+        this.stage = Stage.GIVEN_UP;
+        this.diagnosticStopReason = reason;
+        com.argorice.epicysm.client.ClientDiagnostics.problem("overlay_" + reason, this.ownerEntity, error);
+    }
+
+    private com.google.gson.JsonObject diagnosticState(boolean detailed) {
+        var out = com.argorice.epicysm.client.ClientDiagnostics.fields("entity", com.argorice.epicysm.client.ClientDiagnostics.identity(this.ownerEntity),
+                "texture", this.subject, "stage", this.stage, "mode", this.mode, "stop_reason", this.diagnosticStopReason,
+                "chosen_model", com.argorice.epicysm.client.ClientDiagnostics.identity(this.chosenModel), "form", this.form,
+                "dormant", this.dormant, "searches", this.searches, "measuring_frames", this.frames, "moved_numbers", this.movedNumbers,
+                "dead_copies", this.deadCopies.size(), "keep_dead", this.keepDead, "still_checks", this.stillChecks,
+                "solver", com.argorice.epicysm.client.ClientDiagnostics.identity(this.solver), "bones", this.allBones.size(),
+                "pose_result", this.diagnosticPoseResult, "pose_writes", this.diagnosticPoseWrites, "last_write_nanos", this.diagnosticLastWrite);
+        out.add("slot_low", com.argorice.epicysm.client.ClientDiagnostics.numbers(this.slotLow, 0, 12));
+        out.add("slot_high", com.argorice.epicysm.client.ClientDiagnostics.numbers(this.slotHigh, 0, 12));
+        if (this.diagnosticAppearance != null) out.add("last_appearance_comparison", this.diagnosticAppearance.deepCopy());
+        var raw = new com.google.gson.JsonArray();
+        var visibleClothes = new com.google.gson.JsonArray();
+        int zeroScale = 0;
+        int nonFinite = 0;
+        for (Bone bone : this.allBones) {
+            if (!bone.hasMatrix()) continue;
+            float[] values = bone.matrices();
+            int at = bone.matrixAt();
+            boolean zero = values[at + 6] == 0.0F || values[at + 7] == 0.0F || values[at + 8] == 0.0F;
+            if (zero) zeroScale++;
+            for (int i = 0; i < 12; i++) if (!Float.isFinite(values[at + i])) nonFinite++;
+            if (!zero && bone.name().matches("(?i).*(research|sailor|shell|meltystar|skirt|clothes|hat|bag|glass).*")) visibleClothes.add(bone.name());
+            if (detailed) {
+                var record = com.argorice.epicysm.client.ClientDiagnostics.fields("name", bone.name(), "object", com.argorice.epicysm.client.ClientDiagnostics.identity(bone.target()),
+                        "matrix_offset", at, "state_offset", bone.quatAt());
+                record.add("slot", com.argorice.epicysm.client.ClientDiagnostics.numbers(values, at, 12));
+                record.add("auxiliary", com.argorice.epicysm.client.ClientDiagnostics.numbers(bone.quaternions(), bone.quatAt(), 4));
+                record.add("pivot", com.argorice.epicysm.client.ClientDiagnostics.numbers(bone.pivot(), 0, 3));
+                raw.add(record);
+            }
+        }
+        out.addProperty("zero_scale_slots", zeroScale);
+        out.addProperty("non_finite_numbers", nonFinite);
+        out.add("nonzero_clothing_slots", visibleClothes);
+        if (detailed) out.add("raw_bones", raw);
+        return out;
+    }
+
+    private float[] diagnosticAppearanceSample() {
+        if (this.stage != Stage.ACTIVE || System.nanoTime() - this.diagnosticLastAppearance < 2_000_000_000L) return null;
+        this.diagnosticLastAppearance = System.nanoTime();
+        float[] sample = new float[this.allBones.size() * 6];
+        for (int i = 0; i < this.allBones.size(); i++) {
+            Bone bone = this.allBones.get(i);
+            if (bone.hasMatrix()) System.arraycopy(bone.matrices(), bone.matrixAt() + 6, sample, i * 6, 6);
+        }
+        return sample;
+    }
+
+    private void diagnosticCompareAppearance(float[] before) {
+        if (before == null || before.length != this.allBones.size() * 6) return;
+        var changes = new com.google.gson.JsonArray();
+        int unexpected = 0;
+        for (int i = 0; i < this.allBones.size(); i++) {
+            Bone bone = this.allBones.get(i);
+            if (!bone.hasMatrix()) continue;
+            boolean changed = false;
+            for (int j = 0; j < 6; j++) if (Float.floatToIntBits(before[i * 6 + j]) != Float.floatToIntBits(bone.matrices()[bone.matrixAt() + 6 + j])) changed = true;
+            if (changed) {
+                var delta = com.argorice.epicysm.client.ClientDiagnostics.fields("bone", bone.name(), "expected_weapon_or_locator", this.ownWeapons.contains(bone) || this.handLocators.contains(bone));
+                delta.add("before_tail", com.argorice.epicysm.client.ClientDiagnostics.numbers(before, i * 6, 6));
+                delta.add("after_tail", com.argorice.epicysm.client.ClientDiagnostics.numbers(bone.matrices(), bone.matrixAt() + 6, 6));
+                changes.add(delta);
+                if (!this.ownWeapons.contains(bone) && !this.handLocators.contains(bone)) unexpected++;
+            }
+        }
+        this.diagnosticAppearance = com.argorice.epicysm.client.ClientDiagnostics.fields("mode", this.mode, "observed_nanos", System.nanoTime(), "unexpected_tail_changes", unexpected);
+        this.diagnosticAppearance.add("changes", changes);
+        if (unexpected > 0) com.argorice.epicysm.client.ClientDiagnostics.problem("overlay_tail_channels_changed", this.ownerEntity, null);
+    }
+
     private Stage stage = Stage.IDLE;
     private UUID owner;
     private AbstractClientPlayer ownerEntity;
@@ -499,6 +590,8 @@ public final class YsmSkeletonOverlay {
     /** Forgets everything and puts back what was there before. */
     public void reset() {
         this.restore();
+        this.diagnosticStopReason = "";
+        this.diagnosticPoseResult = "reset";
         this.stage = Stage.IDLE;
         this.owner = null;
         this.ownerEntity = null;
@@ -593,7 +686,7 @@ public final class YsmSkeletonOverlay {
             this.discover(player, renderer, texture);
         } catch (Throwable t) {
             EpicYsm.LOGGER.warn("Skeleton overlay stopped while looking for the skeleton", t);
-            this.stage = Stage.GIVEN_UP;
+            this.diagnosticStop("discovery_exception", t);
         }
     }
 
@@ -602,6 +695,7 @@ public final class YsmSkeletonOverlay {
      * skeleton and before it draws. This is the only moment a write survives.
      */
     public void onDraw(AbstractClientPlayer player, float partialTicks) {
+        float[] appearanceBefore = this.diagnosticAppearanceSample();
         try {
             switch (this.stage) {
                 case MEASURING -> this.measure();
@@ -611,7 +705,9 @@ public final class YsmSkeletonOverlay {
             }
         } catch (Throwable t) {
             EpicYsm.LOGGER.warn("Skeleton overlay stopped while posing the skeleton", t);
-            this.stage = Stage.GIVEN_UP;
+            this.diagnosticStop("pose_exception", t);
+        } finally {
+            this.diagnosticCompareAppearance(appearanceBefore);
         }
     }
 
@@ -661,7 +757,7 @@ public final class YsmSkeletonOverlay {
 
             EpicYsm.LOGGER.warn("Skeleton overlay: no skeleton found for the texture Yes Steve Model draws this"
                     + " player with after {} tries; its own animations are left alone", this.searches);
-            this.stage = Stage.GIVEN_UP;
+            this.diagnosticStop("no_skeleton", null);
             return;
         }
 
@@ -892,7 +988,7 @@ public final class YsmSkeletonOverlay {
         if (byRole.size() < MIN_BONES) {
             EpicYsm.LOGGER.warn("Skeleton overlay: only {} humanoid bone(s) found among {} candidate(s);"
                     + " too little to pose safely, leaving Yes Steve Model alone", byRole.size(), candidates);
-            this.stage = Stage.GIVEN_UP;
+            this.diagnosticStop("insufficient_humanoid_bones", null);
             return;
         }
 
@@ -1444,7 +1540,7 @@ public final class YsmSkeletonOverlay {
 
         EpicYsm.LOGGER.warn("Skeleton overlay: nothing Yes Steve Model exposes for this model changes while it is"
                 + " drawn, so its pose is computed somewhere this mod cannot reach. Its own animations are kept.");
-        this.stage = Stage.GIVEN_UP;
+        this.diagnosticStop("no_live_pose_channel", null);
     }
 
     private static final int NUMBERS_PER_BONE = 19;
@@ -1928,6 +2024,7 @@ public final class YsmSkeletonOverlay {
      * both. This is the path that reproduces the converted models.
      */
     private boolean writeSolved(AbstractClientPlayer player, float partialTicks) {
+        this.diagnosticPoseResult = "solver_unavailable";
         YsmPoseSolver ready = this.solver;
 
         if (ready == null) {
@@ -1937,12 +2034,14 @@ public final class YsmSkeletonOverlay {
         LivingEntityPatch<?> patch = EpicFightCapabilities.getEntityPatch(player, LivingEntityPatch.class);
 
         if (patch == null || patch.getAnimator() == null) {
+            this.diagnosticPoseResult = "patch_or_animator_unavailable";
             return false;
         }
 
         Pose pose = patch.getAnimator().getPose(partialTicks);
 
         if (pose == null) {
+            this.diagnosticPoseResult = "epicfight_pose_unavailable";
             return false;
         }
 
@@ -1950,6 +2049,7 @@ public final class YsmSkeletonOverlay {
         Map<String, YsmPoseSolver.Placement> placements = ready.solve(pose, this.restByName);
 
         if (placements.isEmpty()) {
+            this.diagnosticPoseResult = "solver_no_placements";
             return false;
         }
 
@@ -2002,6 +2102,9 @@ public final class YsmSkeletonOverlay {
             m[at + 5] = offset.z * placeScale;
         }
 
+        this.diagnosticPoseResult = "solver_written";
+        this.diagnosticPoseWrites++;
+        this.diagnosticLastWrite = System.nanoTime();
         return true;
     }
 
@@ -3071,7 +3174,7 @@ public final class YsmSkeletonOverlay {
             EpicYsm.LOGGER.warn("Skeleton overlay: the twelve numbers per bone do move, but none of them sits where"
                     + " a position would - they are not a transform this mod can write. Checked {} bone(s).{}",
                     usable, this.exampleSlot());
-            this.stage = Stage.GIVEN_UP;
+            this.diagnosticStop("unrecognized_matrix_layout", null);
             return false;
         }
 
@@ -3246,6 +3349,7 @@ public final class YsmSkeletonOverlay {
     }
 
     private void writePoseNow(AbstractClientPlayer player, float partialTicks) {
+        this.diagnosticPoseResult = epicFightInCharge(player) ? "fallback_" + this.mode : "ysm_in_charge";
         // Only the body on screen is posed; a model that has turned into
         // something else is Yes Steve Model's alone until it turns back.
         if (!this.probe && !this.formStillShown()) {
