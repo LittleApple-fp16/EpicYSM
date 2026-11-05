@@ -2,6 +2,7 @@ package com.argorice.epicysm.client.ysm;
 
 import com.argorice.epicysm.compat.YsmProvider;
 
+import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import java.util.ArrayList;
@@ -135,35 +136,32 @@ public final class YsmRenderBridge {
             return true;
         }
 
-        event.getPoseStack().pushPose();
-
-        if (carry != null) {
-            event.getPoseStack().translate(carry[0], carry[1], carry[2]);
-            event.getPoseStack().scale(carry[3], carry[4], carry[5]);
-        }
-
-        if (scaleWanted) {
-            YsmScaleProbe.get().begin(texture, event.getPoseStack().last().pose());
-        }
-
-        Window window = new Window(event.getMultiBufferSource(), player, partialTicks,
-                event.getPoseStack(), poseWanted, scaleWanted, texture);
-
-        event.setCanceled(true);
-        inside = true;
-
-        com.mojang.blaze3d.vertex.PoseStack.Pose mark = PoseStacks.mark(event.getPoseStack());
+        PoseStack stack = event.getPoseStack();
+        PoseStack.Pose caller = stack.last();
+        Window window;
+        stack.pushPose();
+        PoseStack.Pose expected = stack.last();
 
         try {
+            if (carry != null) {
+                stack.translate(carry[0], carry[1], carry[2]);
+                stack.scale(carry[3], carry[4], carry[5]);
+            }
+
+            if (scaleWanted) {
+                YsmScaleProbe.get().begin(texture, stack.last().pose());
+            }
+
+            window = new Window(event.getMultiBufferSource(), player, partialTicks,
+                    stack, poseWanted, scaleWanted, texture);
+
+            event.setCanceled(true);
+            inside = true;
+
             float yaw = Mth.rotLerp(partialTicks, player.yRotO, player.getYRot());
-            ((EntityRenderer) renderer).render(player, yaw, partialTicks, event.getPoseStack(), window,
+            ((EntityRenderer) renderer).render(player, yaw, partialTicks, stack, window,
                     event.getPackedLight());
         } catch (Throwable t) {
-            // Whatever it pushed before failing is still on the stack, and
-            // at the end of the frame that stops the game with a message
-            // that names nobody. Cleared here, the failure is one line in
-            // the log and one player drawn by Yes Steve Model alone.
-            PoseStacks.unwind(event.getPoseStack(), mark);
             com.argorice.epicysm.client.ClientDiagnostics.problem("bridge_render_exception", player, t);
 
             // Once may be another mod's bad frame; a pattern is this mod's
@@ -183,7 +181,7 @@ public final class YsmRenderBridge {
             return true;
         } finally {
             inside = false;
-            event.getPoseStack().popPose();
+            PoseStacks.restore(stack, caller, expected, player, "ysm_bridge", renderer);
         }
 
         // The model is drawn; the item in its hand is not, because the copy

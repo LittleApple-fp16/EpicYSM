@@ -1,3 +1,3 @@
-Adds automatic bounded runtime diagnostics for intermittent wardrobe and combat animation failures. Captures world and entity replacement, routing and texture matches, renderer tick guards, bridge shutdowns, skeleton failure reasons, raw bone slots and before/after tail-channel changes.
+Restores the caller’s pose stack after OpenYSM and Yes Steve Model redraws, delegated player renderers, and Epic Fight held-item layers. Also handles renderers that leave extra frames on a normal return, which can otherwise cause the world renderer to stop with `Pose stack not empty`.
 
-Use /epicysm report while the issue is visible to export logs and detailed snapshots as a ZIP under logs/epicysm-diagnostics. This revision records the existing rendering and recovery behavior.
+The runtime diagnostics record the affected route and renderer when they detect an unbalanced stack. Use `/epicysm report` to export a diagnostic ZIP under `logs/epicysm-diagnostics`.

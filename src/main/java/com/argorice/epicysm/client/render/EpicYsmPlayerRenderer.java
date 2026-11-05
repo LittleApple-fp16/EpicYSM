@@ -1,5 +1,6 @@
 package com.argorice.epicysm.client.render;
 
+import com.argorice.epicysm.client.ysm.PoseStacks;
 import com.mojang.blaze3d.vertex.PoseStack;
 
 import org.joml.Vector4f;
@@ -168,123 +169,128 @@ public class EpicYsmPlayerRenderer extends PatchedLivingEntityRenderer<
             ModelManager.get().noteEpicFightRendered(entity);
         }
 
-        // Nameplate, identical to PatchedEntityRenderer.render.
-        RenderNameTagEvent nameTagEvent = new RenderNameTagEvent(entity, entity.getDisplayName(), renderer, poseStack, buffer, packedLight, partialTicks);
-        NeoForge.EVENT_BUS.post(nameTagEvent);
-        MixinEntityRenderer entityRendererAccessor = (MixinEntityRenderer) renderer;
+        PoseStack.Pose caller = poseStack.last();
+        PoseStack.Pose expected = caller;
+        try {
+            // Nameplate, identical to PatchedEntityRenderer.render.
+            RenderNameTagEvent nameTagEvent = new RenderNameTagEvent(entity, entity.getDisplayName(), renderer, poseStack, buffer, packedLight, partialTicks);
+            NeoForge.EVENT_BUS.post(nameTagEvent);
+            MixinEntityRenderer entityRendererAccessor = (MixinEntityRenderer) renderer;
 
-        if (nameTagEvent.canRender().isTrue() || nameTagEvent.canRender().isDefault() && entityRendererAccessor.invokeShouldShowName(entity)) {
-            entityRendererAccessor.invokeRenderNameTag(entity, nameTagEvent.getContent(), poseStack, buffer, packedLight, partialTicks);
-        }
+            if (nameTagEvent.canRender().isTrue() || nameTagEvent.canRender().isDefault() && entityRendererAccessor.invokeShouldShowName(entity)) {
+                entityRendererAccessor.invokeRenderNameTag(entity, nameTagEvent.getContent(), poseStack, buffer, packedLight, partialTicks);
+            }
 
-        MixinLivingEntityRenderer livingRendererAccessor = (MixinLivingEntityRenderer) renderer;
-        boolean isVisible = livingRendererAccessor.invokeIsBodyVisible(entity);
-        boolean isVisibleToPlayer = !isVisible && !entity.isInvisibleTo(Minecraft.getInstance().player);
-        boolean isGlowing = Minecraft.getInstance().shouldEntityAppearGlowing(entity);
-        RenderType renderType;
+            MixinLivingEntityRenderer livingRendererAccessor = (MixinLivingEntityRenderer) renderer;
+            boolean isVisible = livingRendererAccessor.invokeIsBodyVisible(entity);
+            boolean isVisibleToPlayer = !isVisible && !entity.isInvisibleTo(Minecraft.getInstance().player);
+            boolean isGlowing = Minecraft.getInstance().shouldEntityAppearGlowing(entity);
+            RenderType renderType;
 
-        if (model != null) {
-            renderType = this.pickRenderType(model, isVisible, isVisibleToPlayer, isGlowing);
-        } else if (rendererObject instanceof PlayerRenderer) {
-            renderType = livingRendererAccessor.invokeGetRenderType(entity, isVisible, isVisibleToPlayer, isGlowing);
-        } else {
-            // Falling back to the biped mesh while a foreign renderer (YSM)
-            // owns the player: that renderer's getRenderType would return the
-            renderType = this.pickSkinRenderType(entity.getSkin().texture(), isVisible, isVisibleToPlayer, isGlowing);
-        }
-
-        Armature armature = model != null ? model.armature() : entitypatch.getArmature();
-        boolean lying = model != null && entity.isSleeping();
-        poseStack.pushPose();
-
-        // Epic Fight's sleeping pose is written for its own biped: it turns
-        // the root over and lifts it by the height of that body, and a
-        // converted model ends up standing on its head. In bed the model
-        // is laid down the way vanilla does it, in its rest pose.
-        if (lying) {
-            layDown(poseStack, entity, armature);
-        }
-
-        this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
-
-        if (lying) {
-            poseStack.mulPose(com.mojang.math.Axis.XP.rotationDegrees(SLEEP_TILT));
-        }
-
-        // Layers (held item, armor, cape, ...) need a renderer whose layer
-        // list holds the vanilla layer classes our patched layers pair with.
-        PlayerRenderer vanillaRenderer = rendererObject instanceof PlayerRenderer playerRenderer
-                ? playerRenderer
-                : vanillaPlayerRenderer(entity);
-
-        if (vanillaRenderer != null) {
-            this.prepareVanillaModel(entity, vanillaRenderer.getModel(), castRenderer(vanillaRenderer), partialTicks);
-        }
-
-        // Keep the gameplay armature posed like the original renderer does,
-        // then pose the converted one with the same animation Pose.
-        this.setArmaturePose(entitypatch, entitypatch.getArmature(), partialTicks);
-
-        if (model != null) {
-            if (lying) {
-                armature.setPose(new yesman.epicfight.api.animation.Pose());
+            if (model != null) {
+                renderType = this.pickRenderType(model, isVisible, isVisibleToPlayer, isGlowing);
+            } else if (rendererObject instanceof PlayerRenderer) {
+                renderType = livingRendererAccessor.invokeGetRenderType(entity, isVisible, isVisibleToPlayer, isGlowing);
             } else {
-                this.setArmaturePose(entitypatch, armature, partialTicks);
+                // Falling back to the biped mesh while a foreign renderer (YSM)
+                // owns the player: that renderer's getRenderType would return the
+                renderType = this.pickSkinRenderType(entity.getSkin().texture(), isVisible, isVisibleToPlayer, isGlowing);
             }
 
-            // The model's own animation on the bones Epic Fight has no
-            // joint for, then the physics on top of that.
-            if (com.argorice.epicysm.client.EpicYsmConfig.ownAnimations()) {
-                OwnAnimator.get().apply(entity, model, armature, partialTicks);
+            Armature armature = model != null ? model.armature() : entitypatch.getArmature();
+            boolean lying = model != null && entity.isSleeping();
+            poseStack.pushPose();
+            expected = poseStack.last();
+
+            // Epic Fight's sleeping pose is written for its own biped: it turns
+            // the root over and lifts it by the height of that body, and a
+            // converted model ends up standing on its head. In bed the model
+            // is laid down the way vanilla does it, in its rest pose.
+            if (lying) {
+                layDown(poseStack, entity, armature);
             }
 
-            if (com.argorice.epicysm.client.EpicYsmConfig.physics() && !lying) {
-                PhysicsAnimator.get().apply(entity, model, armature, partialTicks);
+            this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
+
+            if (lying) {
+                poseStack.mulPose(com.mojang.math.Axis.XP.rotationDegrees(SLEEP_TILT));
             }
 
-            auditPose(model.id(), armature);
-        }
+            // Layers (held item, armor, cape, ...) need a renderer whose layer
+            // list holds the vanilla layer classes our patched layers pair with.
+            PlayerRenderer vanillaRenderer = rendererObject instanceof PlayerRenderer playerRenderer
+                    ? playerRenderer
+                    : vanillaPlayerRenderer(entity);
 
-        if (renderType != null) {
-            HumanoidMesh mesh = model != null ? model.mesh() : this.getMeshProvider(entitypatch).get();
-            this.prepareMeshParts(mesh, entity);
-            PrepareModelEvent prepareModelEvent = new PrepareModelEvent(this, mesh, entitypatch, buffer, poseStack, packedLight, partialTicks);
-
-            if (!EpicFightClientEventHooks.Render.PREPARE_MODEL_TO_RENDER.post(prepareModelEvent).isCanceled()) {
-                Vector4f color = new Vector4f(1.0F, 1.0F, 1.0F, isVisibleToPlayer ? 0.15F : 1.0F);
-                entitypatch.getEntityDecorations().modifyColor(color, partialTicks);
-
-                int blockLight = (packedLight & 0xF0) >> 4;
-                int skyLight = (packedLight & 0xF00000) >> 20;
-                Vec2i lightUv = new Vec2i(blockLight, skyLight);
-                entitypatch.getEntityDecorations().modifyLight(lightUv, partialTicks);
-                int modifiedLight = LightTexture.pack(lightUv.x, lightUv.y);
-                int overlay = this.getOverlayCoord(entity, entitypatch, partialTicks);
-
-                mesh.draw(poseStack, buffer, renderType, modifiedLight, color.x(), color.y(), color.z(), color.w(), overlay, armature, armature.getPoseMatrices());
-
-                entitypatch.getEntityDecorations().listDecorationOverlays().forEach(decorationOverlay -> {
-                    if (decorationOverlay.shouldRender()) {
-                        Vector4f overlayColor = decorationOverlay.color(partialTicks);
-                        mesh.draw(poseStack, buffer, decorationOverlay.getRenderType(), modifiedLight, overlayColor.x(), overlayColor.y(), overlayColor.z(), overlayColor.w(), OverlayTexture.NO_OVERLAY, armature, armature.getPoseMatrices());
-                    }
-                });
+            if (vanillaRenderer != null) {
+                this.prepareVanillaModel(entity, vanillaRenderer.getModel(), castRenderer(vanillaRenderer), partialTicks);
             }
-        }
 
-        if (!entity.isSpectator()) {
-            // Nothing of this mod's own goes in here. A readable model is
-            // drawn by Epic Fight, with Epic Fight's layers, exactly as it
-            reportItemLayer(vanillaRenderer, renderer, armature);
-            this.renderLayer(vanillaRenderer != null ? castRenderer(vanillaRenderer) : renderer,
-                    entitypatch, entity, armature.getPoseMatrices(), buffer, poseStack, packedLight, partialTicks);
-        }
+            // Keep the gameplay armature posed like the original renderer does,
+            // then pose the converted one with the same animation Pose.
+            this.setArmaturePose(entitypatch, entitypatch.getArmature(), partialTicks);
 
-        if (renderType != null && Minecraft.getInstance().getEntityRenderDispatcher().shouldRenderHitBoxes()) {
-            entitypatch.getClientAnimator().renderDebuggingInfoForAllLayers(poseStack, buffer, partialTicks);
-        }
+            if (model != null) {
+                if (lying) {
+                    armature.setPose(new yesman.epicfight.api.animation.Pose());
+                } else {
+                    this.setArmaturePose(entitypatch, armature, partialTicks);
+                }
 
-        poseStack.popPose();
+                // The model's own animation on the bones Epic Fight has no
+                // joint for, then the physics on top of that.
+                if (com.argorice.epicysm.client.EpicYsmConfig.ownAnimations()) {
+                    OwnAnimator.get().apply(entity, model, armature, partialTicks);
+                }
+
+                if (com.argorice.epicysm.client.EpicYsmConfig.physics() && !lying) {
+                    PhysicsAnimator.get().apply(entity, model, armature, partialTicks);
+                }
+
+                auditPose(model.id(), armature);
+            }
+
+            if (renderType != null) {
+                HumanoidMesh mesh = model != null ? model.mesh() : this.getMeshProvider(entitypatch).get();
+                this.prepareMeshParts(mesh, entity);
+                PrepareModelEvent prepareModelEvent = new PrepareModelEvent(this, mesh, entitypatch, buffer, poseStack, packedLight, partialTicks);
+
+                if (!EpicFightClientEventHooks.Render.PREPARE_MODEL_TO_RENDER.post(prepareModelEvent).isCanceled()) {
+                    Vector4f color = new Vector4f(1.0F, 1.0F, 1.0F, isVisibleToPlayer ? 0.15F : 1.0F);
+                    entitypatch.getEntityDecorations().modifyColor(color, partialTicks);
+
+                    int blockLight = (packedLight & 0xF0) >> 4;
+                    int skyLight = (packedLight & 0xF00000) >> 20;
+                    Vec2i lightUv = new Vec2i(blockLight, skyLight);
+                    entitypatch.getEntityDecorations().modifyLight(lightUv, partialTicks);
+                    int modifiedLight = LightTexture.pack(lightUv.x, lightUv.y);
+                    int overlay = this.getOverlayCoord(entity, entitypatch, partialTicks);
+
+                    mesh.draw(poseStack, buffer, renderType, modifiedLight, color.x(), color.y(), color.z(), color.w(), overlay, armature, armature.getPoseMatrices());
+
+                    entitypatch.getEntityDecorations().listDecorationOverlays().forEach(decorationOverlay -> {
+                        if (decorationOverlay.shouldRender()) {
+                            Vector4f overlayColor = decorationOverlay.color(partialTicks);
+                            mesh.draw(poseStack, buffer, decorationOverlay.getRenderType(), modifiedLight, overlayColor.x(), overlayColor.y(), overlayColor.z(), overlayColor.w(), OverlayTexture.NO_OVERLAY, armature, armature.getPoseMatrices());
+                        }
+                    });
+                }
+            }
+
+            if (!entity.isSpectator()) {
+                // Nothing of this mod's own goes in here. A readable model is
+                // drawn by Epic Fight, with Epic Fight's layers, exactly as it
+                reportItemLayer(vanillaRenderer, renderer, armature);
+                this.renderLayer(vanillaRenderer != null ? castRenderer(vanillaRenderer) : renderer,
+                        entitypatch, entity, armature.getPoseMatrices(), buffer, poseStack, packedLight, partialTicks);
+            }
+
+            if (renderType != null && Minecraft.getInstance().getEntityRenderDispatcher().shouldRenderHitBoxes()) {
+                entitypatch.getClientAnimator().renderDebuggingInfoForAllLayers(poseStack, buffer, partialTicks);
+            }
+        } finally {
+            PoseStacks.restore(poseStack, caller, expected, entity, "epicysm_player", this);
+        }
     }
 
     private boolean handOver(AbstractClientPlayer entity, @javax.annotation.Nullable ConvertedModel model) {
@@ -344,19 +350,20 @@ public class EpicYsmPlayerRenderer extends PatchedLivingEntityRenderer<
             return false;
         }
 
-        PoseStack.Pose mark = com.argorice.epicysm.client.ysm.PoseStacks.mark(poseStack);
+        PoseStack.Pose mark = poseStack.last();
 
         try {
             ((yesman.epicfight.client.renderer.patched.entity.PatchedEntityRenderer) previous)
                     .render(entity, entitypatch, (net.minecraft.client.renderer.entity.EntityRenderer) vanilla, buffer, poseStack, packedLight, partialTicks);
             return true;
         } catch (Throwable t) {
-            com.argorice.epicysm.client.ysm.PoseStacks.unwind(poseStack, mark);
             this.previousBroken = true;
             EpicYsm.LOGGER.warn("The player renderer registered before this mod's ({}) failed to draw a player; from now on"
                     + " this mod draws players itself, and that mod's own look for them is not shown",
                     previous.getClass().getName(), t);
             return false;
+        } finally {
+            PoseStacks.restore(poseStack, mark, mark, entity, "previous_player", previous);
         }
     }
 

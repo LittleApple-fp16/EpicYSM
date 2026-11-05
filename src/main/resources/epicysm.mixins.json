@@ -9,6 +9,9 @@
     "OBBColliderAccess",
     "OBBColliderMixin"
   ],
+  "client": [
+    "PoseStackAccess"
+  ],
   "injectors": {
     "defaultRequire": 0
   }
