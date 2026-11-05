@@ -33,6 +33,7 @@ repositories {
 
 neoForge {
     version = project.neo_version
+    addModdingDependenciesTo(sourceSets.test)
 
     parchment {
         minecraftVersion = project.parchment_minecraft_version
