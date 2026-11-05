@@ -2,6 +2,7 @@ package com.argorice.epicysm.client.ysm;
 
 import com.argorice.epicysm.compat.YsmProvider;
 
+import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import java.util.ArrayList;
@@ -174,34 +175,34 @@ public final class YsmRenderBridge {
             return true;
         }
 
-        event.getPoseStack().pushPose();
-
-        if (carry != null) {
-            event.getPoseStack().translate(carry[0], carry[1], carry[2]);
-            event.getPoseStack().scale(carry[3], carry[4], carry[5]);
-        }
-
-        if (scaleWanted) {
-            YsmScaleProbe.get().begin(texture, event.getPoseStack().last().pose());
-        }
-
-        Window window = new Window(event.getMultiBufferSource(), player, partialTicks,
-                event.getPoseStack(), poseWanted, scaleWanted, texture);
-
-        event.setCanceled(true);
-        inside = true;
-        drawn = player;
-
-        // While Epic Fight holds the weapon, Yes Steve Model must not draw
-        // it as well. Its render reads the hands straight off the player, so
-        // for the length of this one call the hands are shown to it empty;
-        // that covers every path it may draw the item through, including
-        // ones that never ask this buffer source for a buffer.
+        PoseStack stack = event.getPoseStack();
+        PoseStack.Pose caller = stack.last();
+        Window window;
         boolean epicFightHoldsItems = poseWanted && EpicFightItems.own() && YsmSkeletonOverlay.fighting(player);
-        HeldItems held = epicFightHoldsItems ? HeldItems.takeAway(player) : null;
-        com.mojang.blaze3d.vertex.PoseStack.Pose mark = PoseStacks.mark(event.getPoseStack());
+        HeldItems held = null;
+        stack.pushPose();
+        PoseStack.Pose expected = stack.last();
 
         try {
+            if (carry != null) {
+                stack.translate(carry[0], carry[1], carry[2]);
+                stack.scale(carry[3], carry[4], carry[5]);
+            }
+
+            if (scaleWanted) {
+                YsmScaleProbe.get().begin(texture, stack.last().pose());
+            }
+
+            window = new Window(event.getMultiBufferSource(), player, partialTicks,
+                    stack, poseWanted, scaleWanted, texture);
+
+            event.setCanceled(true);
+            inside = true;
+            drawn = player;
+
+            // Hide the held items while Yes Steve Model draws its body.
+            held = epicFightHoldsItems ? HeldItems.takeAway(player) : null;
+
             float yaw = Mth.rotLerp(partialTicks, player.yRotO, player.getYRot());
 
             // A maid is drawn through the entry Touhou Little Maid draws
@@ -211,17 +212,12 @@ public final class YsmRenderBridge {
 
             if (entry != null) {
                 com.argorice.epicysm.client.compat.LittleMaids.draw(entry, renderer, player, yaw, partialTicks,
-                        event.getPoseStack(), window, event.getPackedLight());
+                        stack, window, event.getPackedLight());
             } else {
-                ((EntityRenderer) renderer).render(player, yaw, partialTicks, event.getPoseStack(), window,
+                ((EntityRenderer) renderer).render(player, yaw, partialTicks, stack, window,
                         event.getPackedLight());
             }
         } catch (Throwable t) {
-            // Whatever it pushed before failing is still on the stack, and
-            // at the end of the frame that stops the game with a message
-            // that names nobody. Cleared here, the failure is one line in
-            // the log and one player drawn by Yes Steve Model alone.
-            PoseStacks.unwind(event.getPoseStack(), mark);
             com.argorice.epicysm.client.ClientDiagnostics.problem("bridge_render_exception", player, t);
 
             // Once may be another mod's bad frame; a pattern is this mod's
@@ -242,10 +238,12 @@ public final class YsmRenderBridge {
         } finally {
             inside = false;
             drawn = null;
-            event.getPoseStack().popPose();
-
-            if (held != null) {
-                held.giveBack(player);
+            try {
+                PoseStacks.restore(stack, caller, expected, player, "ysm_bridge", renderer);
+            } finally {
+                if (held != null) {
+                    held.giveBack(player);
+                }
             }
         }
 

@@ -133,8 +133,9 @@ public final class EpicFightItems {
 
 
         boolean off = hand == InteractionHand.OFF_HAND;
-        PoseStack.Pose mark = PoseStacks.mark(poseStack);
+        PoseStack.Pose caller = poseStack.last();
         poseStack.pushPose();
+        PoseStack.Pose expected = poseStack.last();
 
         try {
             poseStack.mulPose(QuaternionUtils.YP.rotationDegrees(180.0F));
@@ -212,10 +213,7 @@ public final class EpicFightItems {
 
             return false;
         } finally {
-            // Our own push, and anything the renderer pushed and then failed
-            // to pop - left there, it ends the frame with "Pose stack not
-            // empty".
-            PoseStacks.unwind(poseStack, mark);
+            PoseStacks.restore(poseStack, caller, expected, player, "held_item", renderer);
         }
     }
 
